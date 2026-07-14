@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Juris Notes - Hub de Sistemas</title>
+
+    <!-- Fontes Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700&family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Ícones / Favicon -->
+    <link rel="icon" href="imagens/favicon.ico">
+
+    <style>
+        :root {
+            /* Cores Base do Sistema Extraídas do seu CSS */
+            --trt-blue: #1a3a5c;
+            --trt-blue-mid: #25527f;
+            
+            /* Cores Específicas dos Módulos */
+            --color-ro-bg: #FFD700;    /* Amarelo Ouro vibrante */
+            --color-ro-text: #000000;  /* Fonte Preta */
+            
+            --color-ed-bg: #D500B5;    /* Fúcsia elegante */
+            --color-ed-text: #FFFFFF;  /* Fonte Branca */
+
+            /* Cores Agravo de Instrumento */
+            --color-ai-bg: #A3E635;    /* Verde-Limão vibrante */
+            --color-ai-text: #000000;  /* Texto preto para alto contraste */
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: var(--trt-blue); /* Fundo Escuro Oficial */
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto; /* CORREÇÃO: Evita corte dos cards em telas menores */
+            color: #ffffff; /* Texto claro por padrão */
+        }
+
+        /* Splash Screen */
+        .juris-splash {
+            position: fixed; inset: 0; z-index: 9999;
+            background-color: var(--trt-blue);
+            display: flex; align-items: center; justify-content: center;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+        .juris-splash.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+        .splash-content { text-align: center; color: #ffffff; display: flex; flex-direction: column; align-items: center; }
+        .splash-logo { width: 140px; height: auto; animation: fade-in 1s forwards; }
+        .splash-title { font-family: 'Playfair Display', serif; font-size: 1.8rem; margin-top: 12px; letter-spacing: 1.5px; }
+        
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Painel do Hub */
+        .hub-container {
+            text-align: center;
+            max-width: 1200px; /* CORREÇÃO: Alargado para caber 3 cards na grade */
+            width: 100%;
+            padding: 20px;
+            animation: fade-in 1s ease 0.5s both;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hub-header {
+            margin-bottom: 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* ==========================================
+           EFEITO DA LOGO: ESTRELA ORBITAL (HUB)
+           ========================================== */
+        
+        /* 1. O Contêiner que define o eixo do universo da logo */
+        .hub-logo-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 110px;  /* Espaço para a órbita não cortar */
+            height: 110px;
+            margin-bottom: 16px;
+            border-radius: 50%;
+            /* Fundo radial sutil para dar profundidade ao brilho */
+            background: radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 60%);
+        }
+
+        /* 2. A Logo centralizada */
+        .hub-logo {
+            width: 80px;
+            height: auto;
+            margin: 0; /* Margem controlada pelo container agora */
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+            position: relative;
+            z-index: 2;
+        }
+
+        /* 3. O Anel Invisível que gira */
+        .orbiting-star {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            animation: spin-orbit 8s linear infinite; /* Rotação suave de 8 segundos */
+            pointer-events: none; /* Impede que a estrela bloqueie cliques na logo */
+        }
+
+        /* 4. A Estrela em si (presa na borda do anel) */
+        .orbiting-star::before {
+            content: '✦';
+            position: absolute;
+            top: 0px; 
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--color-ro-bg); /* Usa o Dourado do RO que já está no seu :root */
+            font-size: 22px;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.4);
+            animation: pulse-star 1.5s ease-in-out infinite alternate;
+        }
+
+        /* Keyframes: Rotação Infinita */
+        @keyframes spin-orbit {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Keyframes: Efeito do brilho pulsando como uma estrela real */
+        @keyframes pulse-star {
+            0% { 
+                opacity: 0.6; 
+                transform: translateX(-50%) scale(0.85); 
+            }
+            100% { 
+                opacity: 1; 
+                transform: translateX(-50%) scale(1.15); 
+                text-shadow: 0 0 15px rgba(255, 215, 0, 1), 0 0 30px rgba(255, 215, 0, 0.6);
+            }
+        }
+
+        /* ==========================================
+           EFEITO 1 EXCLUSIVO: TÍTULO COM DEGRADÊ DOS MÓDULOS (CORRIGIDO)
+           ========================================== */
+        .hub-header h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.8rem;
+            margin: 0 0 8px 0;
+            letter-spacing: 1.5px;
+            
+            /* Degradê expandido (stops em 30%, 50% e 70%) para dar nitidez às cores */
+            background: linear-gradient(
+                110deg, 
+                #cbd5e1 0%, 
+                #ffffff 15%, 
+                var(--color-ro-bg) 30%, /* Amarelo bem definido */
+                var(--color-ed-bg) 50%, /* Fúcsia bem definido */
+                var(--color-ai-bg) 70%, /* Verde-Limão bem definido */
+                #ffffff 85%, 
+                #cbd5e1 100%
+            );
+            background-size: 300% 100%;
+            background-position: 0% center;
+            
+            /* Textura e Vazamento da Cor */
+            color: transparent;
+            -webkit-background-clip: text;
+            background-clip: text;
+            
+            /* Tempo ajustado para 2 segundos para manter elegância e permitir notar a transição */
+            transition: background-position 2s ease-in-out, transform 0.6s ease;
+            cursor: default;
+        }
+
+        .hub-header h1:hover {
+            /* Desloca a faixa ampla de cores por todo o texto */
+            background-position: 100% center;
+            transform: scale(1.02); 
+        }
+
+        .hub-header p {
+            color: #a0aec0;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 32px;
+            width: 100%;
+            padding: 10px;
+        }
+
+        /* ==========================================
+           EFEITO DE MÓDULOS: CINEMA MODE (Foco)
+           ========================================== */
+        .module-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 40px 24px 32px 24px;
+            cursor: pointer;
+            text-decoration: none;
+            /* Curva de transição mais cinematográfica */
+            transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        /* O Hover no Card Selecionado (Ele sobe e brilha) */
+        .module-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            background: rgba(255, 255, 255, 0.09);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 15px 45px rgba(0,0,0,0.5);
+        }
+
+        /* A MÁGICA: Escurece e desfoca os cards que NÃO estão com o mouse */
+        .cards-grid:has(.module-card:hover) .module-card:not(:hover) {
+            opacity: 0.4;
+            filter: blur(3px) grayscale(40%);
+            transform: scale(0.98);
+        }
+
+        /* Ícones - Pequeno pulo interno para acompanhar o movimento */
+        .module-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            transition: transform 0.4s ease;
+        }
+        .module-card:hover .module-icon { 
+            transform: scale(1.1); 
+        }
+        .module-icon svg { width: 36px; height: 36px; }
+
+        .card-ro .module-icon { color: var(--color-ro-bg); background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.2); }
+        .card-ed .module-icon { color: var(--color-ed-bg); background: rgba(213, 0, 181, 0.1); border: 1px solid rgba(213, 0, 181, 0.2); }
+        .card-ai .module-icon { color: var(--color-ai-bg); background: rgba(163, 230, 53, 0.1); border: 1px solid rgba(163, 230, 53, 0.2); }
+
+        /* Tags Gigantes */
+        .module-giant-tag {
+            font-size: 1.15rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            text-align: center;
+            padding: 8px 16px;
+            border-radius: 8px;
+            width: 90%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .tag-ro-color {
+            background-color: var(--color-ro-bg);
+            color: var(--color-ro-text);
+        }
+
+        .tag-ed-color {
+            background-color: var(--color-ed-bg);
+            color: var(--color-ed-text);
+        }
+
+        .tag-ai-color { 
+            background-color: var(--color-ai-bg); 
+            color: var(--color-ai-text); 
+        }
+
+        .module-desc { 
+            font-size: 0.95rem; 
+            color: #cbd5e1; 
+            line-height: 1.6; 
+            margin: 0; 
+            padding: 0 10px; 
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Splash Screen Inicial -->
+    <div id="juris-splash" class="juris-splash">
+        <div class="splash-content">
+            <img src="imagens/logo.png" alt="Juris Notes Logo" class="splash-logo" onerror="this.style.display='none'">
+            <h1 class="splash-title">Juris Notes</h1>
+            <p style="font-weight: 300; letter-spacing: 1.5px;">Carregando Módulos...</p>
+        </div>
+    </div>
+
+    <!-- Hub Principal -->
+    <div class="hub-container">
+        <div class="hub-header">
+            <!-- NOVO: Contêiner que isola a animação -->
+            <div class="hub-logo-container">
+                <div class="orbiting-star"></div>
+                <img src="imagens/logo.png" alt="Juris Notes" class="hub-logo" onerror="this.style.display='none'">
+            </div>
+            <h1>Juris Notes</h1>
+            <p>Painel de Módulos</p>
+        </div>
+
+        <div class="cards-grid">
+            <!-- Card: Recurso Ordinário (Aponta para ro_index.html) -->
+            <a href="recurso/ro_index.html" class="module-card card-ro">
+                <div class="module-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path>
+                        <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path>
+                        <path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path>
+                    </svg>
+                </div>
+                <div class="module-giant-tag tag-ro-color">RECURSO</div>
+                <p class="module-desc">Mapeamento fático, dialética processual e análise probatória aprofundada.</p>
+            </a>
+
+            <!-- Card: Embargos de Declaração (Aponta para ed_index.html) -->
+            <a href="embargos/ed_index.html" class="module-card card-ed">
+                <div class="module-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        <line x1="11" y1="8" x2="11" y2="14"></line>
+                        <line x1="8" y1="11" x2="14" y2="11"></line>
+                    </svg>
+                </div>
+                <div class="module-giant-tag tag-ed-color">EMBARGOS DE DECLARAÇÃO</div>
+                <p class="module-desc">Avaliação de Omissões, Contradições Internas e Erros Materiais.</p>
+            </a>
+
+            <!-- Card: Agravo de Instrumento (Aponta para ai_index.html) -->
+            <a href="agravo/ai_index.html" class="module-card card-ai">
+                <div class="module-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                    </svg>
+                </div>
+                <div class="module-giant-tag tag-ai-color">AGRAVO DE INSTRUMENTO</div>
+                <p class="module-desc">Avaliação de admissibilidade: tempestividade, preparo, representação e óbices de trânsito.</p>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Remove a Splash Screen suavemente após 1.5 segundos
+        document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(() => {
+                document.getElementById('juris-splash').classList.add('is-hidden');
+            }, 1500);
+        });
+    </script>
+</body>
+</html>
