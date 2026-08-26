@@ -10,20 +10,66 @@ window.TopicsManager = (function () {
 
     let _activeTopicoCor = '#ffffff';
 
-    // Observer Otimizado (Debounce de ~16ms para agrupar Recalculate Styles)
+    // Observer Otimizado com Trava de Estado (Prevenção de Loop de Reflow)
     let _layoutDebounceTimer = null;
+    let _isUpdatingLayout = false;
+    
+    // Mapeamento isolado de estado geométrico por elemento (Evita colisão de dados)
+    const _elementHeights = new Map(); 
+
     const resizeObserver = new ResizeObserver((entries) => {
-        clearTimeout(_layoutDebounceTimer);
-        _layoutDebounceTimer = setTimeout(() => {
-            requestAnimationFrame(() => {
-                const container = document.getElementById('timeline-container');
-                if (container) {
-                    posicionarNosDeIdeia(container);
-                    requestAnimationFrame(() => desenharConexoes());
+        if (_isUpdatingLayout) return;
+
+        let requiresTimelineRedraw = false;
+
+        for (const entry of entries) {
+            // 1. GUARDA DE ESTADO: Aborta leitura se o elemento estiver oculto (ex: display: none)
+            // Isso aniquila o loop crônico de "h: 0" relatado na telemetria.
+            if (entry.target.offsetParent === null) {
+                continue;
+            }
+
+            const currentHeight = Math.round(entry.contentRect.height);
+            const targetId = entry.target.id;
+            const lastHeight = _elementHeights.get(targetId) || 0;
+
+            // 2. FILTRO ANTI-RUÍDO: Ignora colapsos (< 10px) e mutações sub-pixel (< 3px)
+            if (currentHeight > 10 && Math.abs(currentHeight - lastHeight) > 3) {
+                
+                // Atualiza o registro isolado deste elemento específico
+                _elementHeights.set(targetId, currentHeight);
+                
+                window.DebugTelemetry?.mark('M1-RO', {
+                    id: targetId,
+                    h: currentHeight
+                });
+
+                // 3. ROTEAMENTO DE RENDERIZAÇÃO: Apenas mudanças na timeline acionam a CPU.
+                // O crescimento do header (topics-tabs-header) não exige recálculo do SVG.
+                if (targetId === 'history-container') {
+                    requiresTimelineRedraw = true;
                 }
-                // _ajustarAbasFantasmas(); // Desativado - Scroll horizontal nativo
-            });
-        }, 16); 
+            }
+        }
+
+        // 4. AGENDAMENTO SEGURO: Apenas executa a matemática complexa se estritamente necessário.
+        if (requiresTimelineRedraw) {
+            clearTimeout(_layoutDebounceTimer);
+            
+            // Debounce em 64ms engloba múltiplas injeções de DOM em um único ciclo de pintura
+            _layoutDebounceTimer = setTimeout(() => {
+                _isUpdatingLayout = true;
+                
+                requestAnimationFrame(() => {
+                    const container = document.getElementById('timeline-container');
+                    if (container) {
+                        posicionarNosDeIdeia(container);
+                        desenharConexoes();
+                    }
+                    setTimeout(() => { _isUpdatingLayout = false; }, 60);
+                });
+            }, 64); 
+        }
     });
 
     // Funções Privadas do Modo de Leitura Centralizado
@@ -223,27 +269,45 @@ window.TopicsManager = (function () {
     }
 
     // --- FÁBRICA DE COMPONENTES: PILHA (GRUPO DE IDEIAS) ---
+    
+    /**
+     * Iterador Estrutural O(N): Varre todos os subnós de um tópico.
+     * Centraliza a lógica de busca do JSON previnindo nós órfãos.
+     */
+    function _percorrerTodosOsNos(topico, callback) {
+        if (!topico) return;
+        
+        const processar = (arr) => {
+            if (arr) arr.forEach(callback);
+        };
+
+        // 1. Ramos Principais e Correlacionados
+        if (topico.anotacoes) {
+            topico.anotacoes.forEach(an => {
+                processar(an.subAnotacoes);
+                if (an.itensCorrelacionados) {
+                    an.itensCorrelacionados.forEach(ic => processar(ic.subAnotacoes));
+                }
+            });
+        }
+        
+        // 2. Ramos Globais e de Tese (Correção do Ponto Cego)
+        processar(topico.diretrizesGlobais);
+        
+        if (topico.diretrizesPorTese) {
+            Object.values(topico.diretrizesPorTese).forEach(arr => processar(arr));
+        }
+    }
+
     function _obterTextosDaPilha(topico, grupoId) {
         if (!topico) return "";
         let textos = [];
         
-        const extrair = (arr) => {
-            if (!arr) return;
-            arr.forEach(s => {
-                // Verifica o grupo e garante que o texto existe e não é vazio
-                if (s.grupoId === grupoId && s.texto && s.texto.trim() !== '') {
-                    textos.push(s.texto.trim());
-                }
-            });
-        };
-
-        // Varredura O(N) linear
-        topico.anotacoes.forEach(an => {
-            extrair(an.subAnotacoes);
-            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => extrair(ic.subAnotacoes));
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === grupoId && no.texto && no.texto.trim() !== '') {
+                textos.push(no.texto.trim());
+            }
         });
-        extrair(topico.diretrizesGlobais);
-        if (topico.diretrizesPorTese) Object.values(topico.diretrizesPorTese).forEach(arr => extrair(arr));
 
         return textos.join(' - ');
     }
@@ -268,7 +332,9 @@ window.TopicsManager = (function () {
         return `
         <div class="sub-annotation-item sub-stack-wrapper" data-source="${source}">
             <div class="sub-annotation-card sub-annotation-stack tema-dossie">
-                <div class="stack-roman-badge" title="Desagrupar Pilha" onclick="TopicsManager.desagruparPilha('${activeTabId}', '${sub.grupoId}')">
+                <!-- A assinatura do onclick foi restaurada ao original para compatibilidade com o script do Modal -->
+                <!-- Adicionado data-grupo-id para tornar o HTML mais robusto para leituras futuras -->
+                <div class="stack-roman-badge" data-grupo-id="${sub.grupoId}" title="Desagrupar Pilha" onclick="TopicsManager.desagruparPilha('${activeTabId}', '${sub.grupoId}')">
                     ${numRomano}
                 </div>
                 
@@ -395,6 +461,15 @@ window.TopicsManager = (function () {
         return item.pagina ? `(${idFormt}fl. ${item.pagina})` : '';
     }
 
+    /**
+     * Fábrica de Componente: Gera o HTML do meta-texto (ID/Folha) com interatividade.
+     * @param {boolean} isModalLeitura - Se true, encadeia o fechamento síncrono do modal antes de saltar para o PDF.
+     */
+    function _gerarMetaInterativo(topicoId, parentIndex, originalCIdx, metaTexto, isModalLeitura = false) {
+        const acaoFechamento = isModalLeitura ? 'TopicsManager.fecharModoLeitura(); ' : '';
+        return `<span class="card-meta" style="cursor:pointer; font-size:0.85rem; color:var(--trt-blue); font-weight:700; text-decoration: underline dashed; text-underline-offset: 3px;" title="Clique: Copiar | Shift+Clique: Editar folha | Ctrl+Clique: Ir ao PDF" onclick="${acaoFechamento}handleMetaClick(event, '${topicoId}', ${parentIndex}, true, ${originalCIdx})">${metaTexto}</span>`;
+    }
+
     // Função estática gerarSVGConector removida (substituída pelo motor dinâmico desenharConexoes)
 
     /**
@@ -479,10 +554,17 @@ window.TopicsManager = (function () {
                 ? `<button title="Editar" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}${ctxCidx}}; ${acaoEditar}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>` 
                 : '';
             
+            // NOVO: Lógica de Elegibilidade para Pilha
+            const isElegivelParaPilha = isCorrelacionado && cIdx != null && !anotacao.itensCorrelacionados[cIdx].pilhaProcId;
+            const btnAgrupar = isElegivelParaPilha 
+                ? `<button title="Criar Pilha Processual" onclick="TopicsManager.abrirModalPilhaProcessual('${activeTabId}', ${index}, ${cIdx})">🗂️</button>` 
+                : '';
+
             const paramMove = isCorrelacionado ? `'${activeTabId}', ${index}, ${cIdx}` : `'${activeTabId}', ${index}, null`;
             
             return `
             <div class="card-actions-bar">
+                ${btnAgrupar}
                 ${btnLeitura}
                 ${btnEditar}
                 <button title="Adicionar Nó de Ideia" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}${ctxCidx}}; acionarNovoNoIdeia()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
@@ -504,9 +586,18 @@ window.TopicsManager = (function () {
         
         // 2. Achata os nós dos Filhos (Correlacionados)
         if (anotacao.itensCorrelacionados) {
+            // Reutiliza ou recria o Map para O(1)
+            const pilhaAnchorMapSub = new Map();
+            anotacao.itensCorrelacionados.forEach((ic, i) => {
+                if (ic.pilhaProcId && !pilhaAnchorMapSub.has(ic.pilhaProcId)) {
+                    pilhaAnchorMapSub.set(ic.pilhaProcId, i);
+                }
+            });
+
             anotacao.itensCorrelacionados.forEach((item, fIdx) => {
                 if (item.subAnotacoes) {
-                    flatSubAnotacoes.push(...item.subAnotacoes.map((s, idx) => ({ ...s, viewSource: fIdx, localIndex: idx })));
+                    let anchorCidx = item.pilhaProcId ? pilhaAnchorMapSub.get(item.pilhaProcId) : fIdx;
+                    flatSubAnotacoes.push(...item.subAnotacoes.map((s, idx) => ({ ...s, viewSource: anchorCidx, localIndex: idx })));
                 }
             });
         }
@@ -569,18 +660,84 @@ window.TopicsManager = (function () {
         // NOVO: Processar itens agrupados
         let htmlCorrelacionados = '';
         if (anotacao.itensCorrelacionados && anotacao.itensCorrelacionados.length > 0) {
+            const processadosPilha = new Set();
+            
+            // OTIMIZAÇÃO O(1): Mapeia as âncoras das pilhas antes do loop principal
+            const pilhaAnchorMap = new Map();
+            anotacao.itensCorrelacionados.forEach((ic, i) => {
+                if (ic.pilhaProcId && !pilhaAnchorMap.has(ic.pilhaProcId)) {
+                    pilhaAnchorMap.set(ic.pilhaProcId, i);
+                }
+            });
+
             htmlCorrelacionados = anotacao.itensCorrelacionados.map((item, cIdx) => {
                 const itemTag = poloParaClasse(item.polo);
                 const itemMeta = _obterMetaTexto(item);
+                const docSeguro = item.documento ? escaparHTML(item.documento) : escaparHTML(item.polo);
+                const poloSeguro = item.polo ? escaparHTML(item.polo) : '';
                 
+                // --- FLUXO A: PILHA PROCESSUAL ---
+                if (item.pilhaProcId) {
+                    if (processadosPilha.has(item.pilhaProcId)) return ''; 
+                    processadosPilha.add(item.pilhaProcId);
+                    const anchorCidx = pilhaAnchorMap.get(item.pilhaProcId);
+                    
+                    // OTIMIZAÇÃO O(N): Mapeamento nativo preservando o índice original
+                    const itensDestaPilhaObj = anotacao.itensCorrelacionados
+                        .map((ic, originalCIdx) => ({ ic, originalCIdx }))
+                        .filter(obj => obj.ic.pilhaProcId === item.pilhaProcId);
+                    
+                    const faseClass = `fase-${typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(item.documento) : 4}`;
+                    
+                    let htmlTextosInternos = itensDestaPilhaObj.map(obj => {
+                        const metaText = _obterMetaTexto(obj.ic);
+                        return `
+                        <div style="margin-bottom:8px;">
+                            <span class="card-meta" style="cursor:pointer; font-size:0.75rem; color:var(--trt-blue); font-weight:700;" title="Clique: Copiar | Shift+Clique: Editar folha | Ctrl+Clique: Ir ao PDF" onclick="handleMetaClick(event, '${activeTabId}', ${index}, true, ${obj.originalCIdx})">${metaText}</span>
+                            <p style="font-size:0.85rem; margin-top:4px;">"${renderizarMarkdownSeguro(escaparHTML(obj.ic.conteudo))}"</p>
+                        </div>`;
+                    }).join('<hr class="stack-text-divider">');
+                    
+                    return `
+                    <div class="correlated-item-wrapper" data-cidx="${anchorCidx}"
+                         draggable="true"
+                         ondragstart="DnDManager.dragStart(event, '${activeTabId}', ${index}, ${anchorCidx})"
+                         ondragover="DnDManager.dragOver(event)"
+                         ondrop="DnDManager.drop(event, '${activeTabId}', ${index}, ${anchorCidx})"
+                         ondragenter="DnDManager.dragEnter(event)"
+                         ondragleave="DnDManager.dragLeave(event)"
+                         ondragend="DnDManager.dragEnd(event)">
+                         
+                        <div class="two-way-arrow-container correlated-drag-handle" title="Arraste a pasta inteira para reordenar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        
+                        <div class="annotation-card correlated-card pilha-processual-card ${faseClass}">
+                            <div class="card-header">
+                                <div style="display:flex; gap:6px;">
+                                    <span class="polo-tag doc-tag">🗂️ ${docSeguro}</span>
+                                    ${(poloSeguro && poloSeguro !== docSeguro) ? `<span class="polo-tag ${itemTag}">${poloSeguro}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="scrollable-stack-text">${htmlTextosInternos}</div>
+                            
+                            <!-- BOTÃO ATUALIZADO: Dispara o novo motor de leitura estruturada -->
+                            <div class="btn-read-mode-trigger pilha-read-badge" title="Ler Pastinha Completa" onclick="TopicsManager.abrirModoLeituraPilhaProcessual('${activeTabId}', ${index}, '${item.pilhaProcId}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                            </div>
+                            <div class="card-actions-bar">
+                                <button title="Adicionar Nó de Ideia" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}, cIdx:${anchorCidx}}; acionarNovoNoIdeia()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                                <button class="delete-btn" title="Desagrupar" onclick="TopicsManager.desagruparPilhaProcessual('${activeTabId}', ${index}, '${item.pilhaProcId}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 22L2 22 2 14M22 2L14 2 14 10" stroke-linecap="round" stroke-linejoin="round"/><line x1="22" y1="2" x2="10" y2="14" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="22" x2="14" y2="10" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+
+                // --- FLUXO B: RENDERIZAR CARD NORMAL ---
                 let cConteudo = '';
                 let cComent = '';
-                
                 if (item.tipo === 'texto') {
-                    cConteudo = `
-                    <div style="position: relative;">
-                        <p class="card-texto" data-raw-text="${escaparHTML(item.conteudo)}" data-raw-title="${escaparHTML(item.documento || item.polo || 'Agrupamento')}" ondblclick="TopicsManager.abrirModoLeitura(this)">"${renderizarMarkdownSeguro(escaparHTML(item.conteudo))}"</p>
-                    </div>`;
+                    cConteudo = `<div style="position: relative;"><p class="card-texto" data-raw-text="${escaparHTML(item.conteudo)}" data-raw-title="${escaparHTML(item.documento || item.polo || 'Agrupamento')}" ondblclick="TopicsManager.abrirModoLeitura(this)">"${renderizarMarkdownSeguro(escaparHTML(item.conteudo))}"</p></div>`;
                     if (item.comentario) cComent = `<div class="card-comentario"><strong>Observação:</strong> ${escaparHTML(item.comentario)}</div>`;
                 } else if (item.tipo === 'imagem') {
                     cConteudo = `<div class="image-resize-wrapper" title="Arraste para redimensionar"><img class="card-imagem" src="${item.conteudo}" alt="Agrupamento"></div>`;
@@ -590,7 +747,7 @@ window.TopicsManager = (function () {
                     cConteudo = audioData.htmlConteudo;
                     cComent = audioData.htmlComentario;
                 }
-                    
+                
                 return `
                 <div class="correlated-item-wrapper" data-cidx="${cIdx}"
                      draggable="true"
@@ -600,23 +757,21 @@ window.TopicsManager = (function () {
                      ondragenter="DnDManager.dragEnter(event)"
                      ondragleave="DnDManager.dragLeave(event)"
                      ondragend="DnDManager.dragEnd(event)">
-                    <div class="two-way-arrow-container correlated-drag-handle" title="Arraste para reordenar">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </div>
-                    <div class="annotation-card correlated-card fase-${typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(item.documento) : 4}">
-                        <div class="card-header">
-                            <div style="display:flex; gap:6px;">
-                                <span class="polo-tag doc-tag">${item.documento ? escaparHTML(item.documento) : escaparHTML(item.polo)}</span>
-                                ${(item.documento && item.polo && item.polo !== item.documento) ? `<span class="polo-tag ${itemTag}">${escaparHTML(item.polo)}</span>` : ''}
-                            </div>
-                            <span class="card-meta" style="cursor:pointer;" title="Clique: Copiar | Shift+Clique: Editar folha | Ctrl+Clique: Ir ao PDF" onclick="handleMetaClick(event, '${activeTabId}', ${index}, true, ${cIdx})">${itemMeta}</span>
-                        </div>
-                        ${cConteudo}
-                        ${cComent}
-                        ${gerarBarraAcoes(true, cIdx)}
-                    </div>
+                     <div class="two-way-arrow-container correlated-drag-handle" title="Arraste para reordenar">
+                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                     </div>
+                     <div class="annotation-card correlated-card fase-${typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(item.documento) : 4}">
+                         <div class="card-header">
+                             <div style="display:flex; gap:6px;">
+                                 <span class="polo-tag doc-tag">${docSeguro}</span>
+                                 ${(poloSeguro && poloSeguro !== docSeguro) ? `<span class="polo-tag ${itemTag}">${poloSeguro}</span>` : ''}
+                             </div>
+                             <span class="card-meta" style="cursor:pointer;" title="Clique: Copiar | Shift+Clique: Editar folha | Ctrl+Clique: Ir ao PDF" onclick="handleMetaClick(event, '${activeTabId}', ${index}, true, ${cIdx})">${itemMeta}</span>
+                         </div>
+                         ${cConteudo}
+                         ${cComent}
+                         ${gerarBarraAcoes(true, cIdx)}
+                     </div>
                 </div>`;
             }).join('');
         }
@@ -804,6 +959,9 @@ window.TopicsManager = (function () {
      * Re-renderiza o fichário inteiro.
      */
     function renderizarFichario(topicosArray) {
+        const _t0 = performance.now();
+        window.DebugTelemetry?.mark('M2-RENDER', { morph: typeof morphdom !== 'undefined' });
+        
         const headerEl  = document.getElementById('topics-tabs-header');
         const contentEl = document.getElementById('topics-tab-content');
 
@@ -1104,6 +1262,10 @@ window.TopicsManager = (function () {
                 childrenOnly: true,
                 getNodeKey: function(node) {
                     if (node.id) return node.id;
+                },
+                onBeforeElUpdated: function() { 
+                    window.DebugTelemetry?.mark('M6-MORPH'); 
+                    return true; 
                 }
             });
         } else {
@@ -1111,10 +1273,9 @@ window.TopicsManager = (function () {
         }
             
         requestAnimationFrame(() => {
-            // 1. Observer unificado: vigia as mudanças dimensionais de ambos os tipos de cards
+            // 1. CORREÇÃO: Removemos a linha "resizeObserver.observe(el)" daqui.
+            // O sistema checa o tamanho do texto 1 VEZ ao carregar a aba, barrando o loop de reflow.
             document.querySelectorAll('.sub-text-content, .card-texto').forEach(el => {
-                if (typeof resizeObserver !== 'undefined') resizeObserver.observe(el);
-                
                 if (el.scrollHeight > el.clientHeight) {
                     el.classList.add('is-truncated');
                     const parentCard = el.closest('.annotation-card, .sub-annotation-card');
@@ -1126,14 +1287,19 @@ window.TopicsManager = (function () {
                 }
             });
 
+            // 2. O Observer agora vigia APENAS o container pai (e não dezenas de textos pequenos)
             const historyContainer = document.getElementById('history-container');
-                if (historyContainer && typeof resizeObserver !== 'undefined') resizeObserver.observe(historyContainer);
+            if (historyContainer && typeof resizeObserver !== 'undefined') {
+                resizeObserver.observe(historyContainer);
+            }
             
-            if (headerEl && typeof resizeObserver !== 'undefined') resizeObserver.observe(headerEl);
+            if (headerEl && typeof resizeObserver !== 'undefined') {
+                resizeObserver.observe(headerEl);
+            }
 
             document.querySelectorAll('.image-resize-wrapper').forEach(wrapper => {
-                wrapper.addEventListener('mouseup', () => desenharConexoes());
-                wrapper.addEventListener('mouseleave', () => desenharConexoes());
+                wrapper.addEventListener('mouseup', () => { window.DebugTelemetry?.mark('M8-IMG'); desenharConexoes(); });
+                wrapper.addEventListener('mouseleave', () => { window.DebugTelemetry?.mark('M8-IMG'); desenharConexoes(); });
             });
 
             const container = document.getElementById('timeline-container');
@@ -1148,6 +1314,7 @@ window.TopicsManager = (function () {
             atualizarContadorNotasOcultas();
             
             // _ajustarAbasFantasmas(); // Desativado - Scroll horizontal nativo
+            window.DebugTelemetry?.mark('M2-RENDER-FIM', { ms: Math.round(performance.now() - _t0) });
         });
     }
 
@@ -1156,6 +1323,7 @@ window.TopicsManager = (function () {
      * Evita Layout Thrashing através de leitura em massa (Passe A) seguida de mutação (Passe B)
      */
     function posicionarNosDeIdeia(container) {
+        window.DebugTelemetry?.mark('M3-POS', { masters: container.querySelectorAll('.timeline-item-master').length });
         const masterItems = container.querySelectorAll('.timeline-item-master');
         
         masterItems.forEach(master => {
@@ -1304,6 +1472,7 @@ window.TopicsManager = (function () {
         });
 
         svg.innerHTML = svgContent;
+        window.DebugTelemetry?.mark('M4-SVG', { ms: 0, paths: (svgContent.match(/<path/g) || []).length });
     }
 
     /**
@@ -1402,6 +1571,7 @@ window.TopicsManager = (function () {
     const _headerEl = document.getElementById('topics-tabs-header');
     if (_headerEl) {
         _headerEl.addEventListener('wheel', (evt) => {
+            window.DebugTelemetry?.mark('M7-WHEEL');
             if (evt.deltaY !== 0) {
                 evt.preventDefault();
                 _headerEl.scrollLeft += evt.deltaY * 2;
@@ -1491,17 +1661,72 @@ window.TopicsManager = (function () {
         modal.style.display = 'flex';
     }
 
+    function abrirModoLeituraPilhaProcessual(topicoId, parentIndex, pilhaProcId) {
+        const topico = topicos.find(t => t.id === topicoId);
+        if (!topico) return;
+        const mestre = topico.anotacoes[parentIndex];
+        
+        // Otimização O(N) e Preservação do Índice Original
+        const itensDestaPilhaObj = mestre.itensCorrelacionados
+            .map((ic, originalCIdx) => ({ ic, originalCIdx }))
+            .filter(obj => obj.ic.pilhaProcId === pilhaProcId);
+        
+        if (itensDestaPilhaObj.length === 0) return;
+        const docSeguro = escaparHTML(itensDestaPilhaObj[0].ic.documento || itensDestaPilhaObj[0].ic.polo || 'Pastinha de Provas');
+        
+        let htmlAgrupado = '';
+        let markdownAcumulado = `### 🗂️ Leitura: ${docSeguro}\n\n`;
+        
+        // COMPATIBILIDADE CRÍTICA: O motor nativo \`copiarTextoModoLeitura\` quebra o HTML a cada '\\n' 
+        // e envolve em <p>. Usamos APENAS tags inline (<strong>, <i>, <br>) para evitar HTML inválido no Word/PJe.
+        let htmlAcumulado = `<strong>🗂️ Leitura: ${docSeguro}</strong>\n`;
+        
+        itensDestaPilhaObj.forEach((obj, i) => {
+            const ic = obj.ic;
+            const metaTexto = _obterMetaTexto(ic);
+            
+            // HTML de Tela: Componente interativo com UX de fechamento automático síncrono
+            const metaInterativoTela = _gerarMetaInterativo(topicoId, parentIndex, obj.originalCIdx, metaTexto, true);
+            
+            htmlAgrupado += `
+            <div style="padding-bottom: 16px; border-bottom: 1px dashed #e2e8f0; margin-bottom: 16px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <span style="font-size:0.75rem; color:#64748b; font-weight:800; background:#f1f5f9; padding:2px 8px; border-radius:12px;">ITEM ${i + 1}</span>
+                    ${metaInterativoTela}
+                </div>
+                <div style="font-size: 1.05rem; color: #334155; line-height: 1.6; font-style: italic;">
+                    "${renderizarMarkdownSeguro(escaparHTML(ic.conteudo))}"
+                </div>
+            </div>`;
+            
+            // Sincronização de Estado (Copy-Safe)
+            markdownAcumulado += `**ITEM ${i + 1}** ${metaTexto}\n"${ic.conteudo}"\n\n`;
+            htmlAcumulado += `<strong>ITEM ${i + 1}</strong> ${metaTexto}<br><i>"${renderizarMarkdownSeguro(escaparHTML(ic.conteudo))}"</i>\n`;
+        });
+        
+        // Mutação das Variáveis Globais (Resolve o Stale State)
+        _textoLeituraAtualMarkdown = markdownAcumulado.trim();
+        _textoLeituraAtualHTML = htmlAcumulado;
+        
+        // Renderização Visual no Modal
+        const modal = document.getElementById('reading-mode-modal');
+        document.getElementById('reading-mode-title-text').innerHTML = `🗂️ Leitura: ${docSeguro}`;
+        document.getElementById('reading-mode-content').innerHTML = htmlAgrupado;
+        document.getElementById('reading-mode-backdrop').style.display = 'block';
+        modal.style.display = 'flex';
+    }
+
     function desagruparPilha(topicoId, grupoId) {
+        // Bloqueia o vazamento de clique capturando o evento globalmente (sem sujar o HTML)
+        if (typeof window.event !== 'undefined' && window.event) {
+            window.event.stopPropagation();
+        }
+        
         if (!confirm('Deseja desagrupar esta pilha e restaurar os nós individualmente?')) return;
         const topico = topicos.find(t => t.id === topicoId);
         
-        const limparGrupo = (subArr) => {
-            if(subArr) subArr.forEach(s => { if (s.grupoId === grupoId) delete s.grupoId; });
-        };
-
-        topico.anotacoes.forEach(an => {
-            limparGrupo(an.subAnotacoes);
-            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => limparGrupo(ic.subAnotacoes));
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === grupoId) delete no.grupoId;
         });
 
         renderizarFichario(topicos); 
@@ -1520,22 +1745,13 @@ window.TopicsManager = (function () {
         let descManualSalva = ""; // Inicia vazia (Piloto automático ON)
 
         // Busca o valor ATUAL salvo no banco
-        const extrair = (arr) => {
-            if (!arr) return;
-            const no = arr.find(s => s.grupoId === grupoId);
-            if (no) {
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === grupoId) {
                 if (no.grupoTitulo) titAtual = no.grupoTitulo;
                 // Só carrega se existir de fato uma edição manual no banco
                 if (no.grupoDescricao) descManualSalva = no.grupoDescricao;
             }
-        };
-
-        topico.anotacoes.forEach(an => { 
-            extrair(an.subAnotacoes); 
-            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => extrair(ic.subAnotacoes)); 
         });
-        extrair(topico.diretrizesGlobais);
-        if (topico.diretrizesPorTese) Object.values(topico.diretrizesPorTese).forEach(arr => extrair(arr));
 
         const inputTitulo = document.getElementById('input-pilha-titulo');
         const inputDesc = document.getElementById('input-pilha-descricao');
@@ -1570,33 +1786,103 @@ window.TopicsManager = (function () {
         const nDesc = document.getElementById('input-pilha-descricao').value.trim();
 
         // MOTOR DE LIMPEZA DE ESTADO (State Sanitization)
-        const atualizar = (arr) => {
-            if (!arr) return;
-            arr.forEach(s => {
-                if (s.grupoId === _contextoEdicaoPilha.grupoId) {
-                    s.grupoTitulo = nTit;
-                    
-                    if (nDesc === "") {
-                        // Se o usuário deixou vazio, DELETA a chave para manter o JSON limpo
-                        // e ativar a renderização automática no _gerarHtmlPilha
-                        delete s.grupoDescricao;
-                    } else {
-                        s.grupoDescricao = nDesc;
-                    }
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === _contextoEdicaoPilha.grupoId) {
+                no.grupoTitulo = nTit;
+                
+                if (nDesc === "") {
+                    // Se o usuário deixou vazio, DELETA a chave para manter o JSON limpo
+                    // e ativar a renderização automática no _gerarHtmlPilha
+                    delete no.grupoDescricao;
+                } else {
+                    no.grupoDescricao = nDesc;
                 }
-            });
-        };
-
-        topico.anotacoes.forEach(an => { 
-            atualizar(an.subAnotacoes); 
-            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => atualizar(ic.subAnotacoes)); 
+            }
         });
-        atualizar(topico.diretrizesGlobais);
-        if (topico.diretrizesPorTese) Object.values(topico.diretrizesPorTese).forEach(arr => atualizar(arr));
 
         fecharModalPilha();
         renderizarFichario(topicos); // Dispara a view atualizada
         if (window.salvarBackupAutomatico) salvarBackupAutomatico(); // Grava JSON limpo
+    }
+
+    let _pilhaProcContext = null;
+
+    function abrirModalPilhaProcessual(topicoId, parentIndex, cIdxOrigem) {
+        const topico = topicos.find(t => t.id === topicoId);
+        const mestre = topico.anotacoes[parentIndex];
+        const itemReferencia = mestre.itensCorrelacionados[cIdxOrigem];
+
+        const elegiveis = mestre.itensCorrelacionados.map((item, idx) => ({ item, idx }))
+            .filter(obj => 
+                obj.item.documento === itemReferencia.documento && 
+                obj.item.polo === itemReferencia.polo &&
+                !obj.item.pilhaProcId 
+            );
+
+        if (elegiveis.length < 2 && !itemReferencia.pilhaProcId) {
+            if(typeof exibirToast === 'function') exibirToast('Não há outros cards elegíveis para agrupar com este.', 'aviso');
+            return;
+        }
+
+        _pilhaProcContext = { topicoId, parentIndex };
+        let html = '';
+
+        elegiveis.forEach(obj => {
+            const textoBruto = obj.item.conteudo.replace(/<[^>]*>?/gm, '').substring(0, 70) + '...';
+            const textoSeguro = escaparHTML(textoBruto); 
+
+            html += `
+            <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; background:#fafafa; transition: background 0.2s;">
+                <input type="checkbox" class="pilha-chk" value="${obj.idx}" ${obj.idx === cIdxOrigem ? 'checked disabled' : ''} style="margin-top:2px; transform: scale(1.1);">
+                <span style="font-size:0.85rem; color:var(--text-dark); line-height:1.4;">${textoSeguro}</span>
+            </label>`;
+        });
+
+        document.getElementById('lista-checklist-pilha').innerHTML = html;
+        document.getElementById('pilha-processual-backdrop').style.display = 'block';
+        document.getElementById('modal-pilha-processual').style.display = 'flex';
+    }
+
+    function fecharModalPilhaProcessual() {
+        document.getElementById('pilha-processual-backdrop').style.display = 'none';
+        document.getElementById('modal-pilha-processual').style.display = 'none';
+        _pilhaProcContext = null;
+    }
+
+    function salvarPilhaProcessual() {
+        if (!_pilhaProcContext) return;
+        const topico = topicos.find(t => t.id === _pilhaProcContext.topicoId);
+        const chks = document.querySelectorAll('.pilha-chk:checked');
+        
+        if (chks.length < 2) {
+            if(typeof exibirToast === 'function') exibirToast('Selecione pelo menos 2 provas.', 'aviso');
+            return;
+        }
+
+        const novaPilhaId = 'pilhaProc-' + Date.now();
+        
+        chks.forEach(chk => {
+            const idx = parseInt(chk.value, 10);
+            topico.anotacoes[_pilhaProcContext.parentIndex].itensCorrelacionados[idx].pilhaProcId = novaPilhaId;
+        });
+
+        fecharModalPilhaProcessual();
+        renderizarFichario(topicos); 
+        if(window.salvarBackupAutomatico) salvarBackupAutomatico();
+        if(typeof exibirToast === 'function') exibirToast('Pilha Processual criada!', 'sucesso');
+    }
+
+    function desagruparPilhaProcessual(topicoId, parentIndex, pilhaId) {
+        if(!confirm('Desagrupar e restaurar as provas individualmente?')) return;
+        
+        const topico = topicos.find(t => t.id === topicoId);
+        topico.anotacoes[parentIndex].itensCorrelacionados.forEach(ic => {
+            if (ic.pilhaProcId === pilhaId) delete ic.pilhaProcId;
+        });
+
+        renderizarFichario(topicos);
+        if(window.salvarBackupAutomatico) salvarBackupAutomatico();
+        if(typeof exibirToast === 'function') exibirToast('Pilha desagrupada com sucesso.', 'info');
     }
 
     // API pública do módulo
@@ -1617,7 +1903,13 @@ window.TopicsManager = (function () {
         fecharModoLeitura,
         copiarTextoModoLeitura,
         hexToRgba,
-        rolarParaProximaNotaOculta
+        rolarParaProximaNotaOculta,
+        // NOVAS EXPORTAÇÕES DA PILHA PROCESSUAL
+        abrirModoLeituraPilhaProcessual,
+        abrirModalPilhaProcessual,
+        fecharModalPilhaProcessual,
+        salvarPilhaProcessual,
+        desagruparPilhaProcessual
     };
 
 })();
