@@ -3,6 +3,23 @@
    ORQUESTRADOR CENTRAL E INFRAESTRUTURA DA APLICAÇÃO
    ================================================ */
 
+// Utilitário para evitar Layout Thrashing e Flickering
+window.RenderCycle = {
+    awaitNextFrame: () => new Promise(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }),
+    bloquearScrollBody: (bloquear) => {
+        if (bloquear) {
+            const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+            document.body.style.overflow = 'hidden';
+            document.body.style.paddingRight = `${scrollBarWidth}px`;
+        } else {
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
+    }
+};
+
 /* ================================================
    MÓDULO DA SPLASH SCREEN (GERENCIADOR DE ESTADO E EVENT LOOP)
    ================================================ */
@@ -67,21 +84,135 @@ window.sincronizarHighlightsGerais = function() {
 /* ================================================
    MOTOR DE HIGIENIZAÇÃO DE TEXTO (JURIS UTILS)
    ================================================ */
-window.JurisUtils = window.JurisUtils || {};
+window.JurisUtils = (function() {
+    // 1. HOISTING: Constantes compiladas apenas uma vez (Otimização de Memória V8)
+    const REGEX_INVISIVEIS = /[\u200B-\u200D\uFEFF]/g;
+    
+    // Expressão Regular Multilinha Segura (Revisada): 
+    // Limita a captura à própria linha do rodapé, evitando vazamento para a página seguinte.
+    const REGEX_ASSINATURAS_BLOCO = /(?:Documento\s+assinado\s+eletronicamente\s+por|Assinado\s+(?:digitalmente|eletronicamente)\s+por|Signatário(?:\(a\))?[:\s])[^\n]*(?=\n|$)/gi;
+    const REGEX_CABECHALHO_PJE = /\bfls\.?\s*:\s*\d+\b/gi;
+    
+    const REGEX_HIFEN_QUEBRA = /([\p{L}])-\r?\n\s*([\p{L}])/gu;
+    const REGEX_QUEBRA_SIMPLES = /([^\n\r])\r?\n([^\n\r])/g;
+    const REGEX_ESPACOS_DUPLOS = / {2,}/g;
 
-window.JurisUtils.limparTextoPDF = function(texto) {
-    if (!texto || typeof texto !== 'string') return '';
-    return texto
-        // 1. Remove APENAS hifens de divisão silábica (entre letras Unicode).
-        // Protege listas (- item) e nomenclaturas mistas (art. 10-A)
-        .replace(/([\p{L}])-\r?\n\s*([\p{L}])/gu, '$1$2')
-        // 2. Emenda linhas quebradas simples. 
-        // Protege parágrafos reais (preserva \n\n ou \r\n\r\n)
-        .replace(/([^\n\r])\r?\n([^\n\r])/g, '$1 $2')
-        // 3. Colapsa espaços duplos ou múltiplos criados durante a junção
-        .replace(/ {2,}/g, ' ')
-        .trim();
-};
+    const _encontrarMaiorSubstringComum = (s1, s2) => {
+        if (!s1 || !s2) return "";
+        let maxLen = 0, endIdx = 0;
+        const prev = new Uint16Array(s2.length + 1);
+        const curr = new Uint16Array(s2.length + 1);
+        for (let i = 1; i <= s1.length; i++) {
+            for (let j = 1; j <= s2.length; j++) {
+                if (s1[i - 1] === s2[j - 1]) {
+                    curr[j] = prev[j - 1] + 1;
+                    if (curr[j] > maxLen) { maxLen = curr[j]; endIdx = i; }
+                } else { curr[j] = 0; }
+            }
+            prev.set(curr);
+        }
+        return s1.substring(endIdx - maxLen, endIdx);
+    };
+
+    return {
+        removerTrechoFuzzy: function(textoBruto, amostraTarget, marcadorLGPD, isAgulhaEsqueleto = false) {
+            if (!textoBruto || !amostraTarget) return textoBruto;
+            const fallbackMarcador = '\n\n[AVISO DE SISTEMA: Dados estruturais ou sensíveis ocultados.]\n\n';
+            const tagFinal = marcadorLGPD !== undefined ? marcadorLGPD : fallbackMarcador;
+
+            let esqueletoAgulha = amostraTarget;
+            
+            if (!isAgulhaEsqueleto) {
+                const agulhaMatches = [...amostraTarget.toLowerCase().matchAll(/[\p{L}]/gu)];
+                if (agulhaMatches.length < 15) return textoBruto; 
+                esqueletoAgulha = agulhaMatches.map(m => m[0]).join('');
+            }
+
+            const palheiroMatches = [...textoBruto.toLowerCase().matchAll(/[\p{L}]/gu)];
+            if (palheiroMatches.length === 0) return textoBruto;
+            const esqueletoPalheiro = palheiroMatches.map(m => m[0]).join('');
+
+            const rangesParaSubstituir = [];
+            let startIndex = 0;
+
+            while (true) {
+                const pos = esqueletoPalheiro.indexOf(esqueletoAgulha, startIndex);
+                if (pos === -1) break;
+
+                const inicioReal = palheiroMatches[pos].index;
+                const fimRealObj = palheiroMatches[pos + esqueletoAgulha.length - 1];
+                const fimReal = fimRealObj.index + fimRealObj[0].length; 
+
+                rangesParaSubstituir.push({ start: inicioReal, end: fimReal });
+                startIndex = pos + esqueletoAgulha.length;
+            }
+
+            if (rangesParaSubstituir.length === 0) return textoBruto;
+
+            let resultadoFinal = textoBruto;
+            for (let i = rangesParaSubstituir.length - 1; i >= 0; i--) {
+                const { start, end } = rangesParaSubstituir[i];
+                resultadoFinal = resultadoFinal.substring(0, start) + tagFinal + resultadoFinal.substring(end);
+            }
+
+            return resultadoFinal;
+        },
+
+        descobrirRuidosEstruturais: function(textoPagA, textoPagB) {
+            const esqA = [...textoPagA.toLowerCase().matchAll(/[\p{L}]/gu)].map(m => m[0]).join('');
+            const esqB = [...textoPagB.toLowerCase().matchAll(/[\p{L}]/gu)].map(m => m[0]).join('');
+            if (esqA.length < 50 || esqB.length < 50) return [];
+            
+            const ruidos = [];
+            const lcsTopo = _encontrarMaiorSubstringComum(esqA.substring(0, 300), esqB.substring(0, 300));
+            if (lcsTopo.length >= 15) ruidos.push(lcsTopo);
+            
+            const lcsBase = _encontrarMaiorSubstringComum(esqA.substring(Math.max(0, esqA.length - 300)), esqB.substring(Math.max(0, esqB.length - 300)));
+            if (lcsBase.length >= 15 && lcsBase !== lcsTopo) ruidos.push(lcsBase);
+            
+            return ruidos;
+        },
+
+        limparTextoPDF: function(texto) {
+            if (!texto || typeof texto !== 'string') return '';
+            
+            return texto
+                .replace(REGEX_INVISIVEIS, '')
+                .replace(REGEX_ASSINATURAS_BLOCO, ' ')
+                .replace(REGEX_HIFEN_QUEBRA, '$1$2') 
+                .replace(REGEX_QUEBRA_SIMPLES, '$1 $2') 
+                .replace(REGEX_ESPACOS_DUPLOS, ' ')
+                .trim();
+        },
+
+        processarTextoParaExtracao: function(textoOriginal) {
+            if (!textoOriginal) return { textoLimpo: '', indicesExcluidos: [] };
+            
+            let indicesExcluidos = [];
+            let match;
+            
+            while ((match = REGEX_ASSINATURAS_BLOCO.exec(textoOriginal)) !== null) {
+                indicesExcluidos.push({ start: match.index, end: match.index + match[0].length });
+            }
+            
+            while ((match = REGEX_CABECHALHO_PJE.exec(textoOriginal)) !== null) {
+                indicesExcluidos.push({ start: match.index, end: match.index + match[0].length });
+            }
+
+            indicesExcluidos.sort((a, b) => b.start - a.start);
+
+            let textoLimpo = textoOriginal;
+            
+            indicesExcluidos.forEach(range => {
+                textoLimpo = textoLimpo.substring(0, range.start) + " " + textoLimpo.substring(range.end);
+            });
+
+            textoLimpo = textoLimpo.replace(REGEX_INVISIVEIS, '').replace(/ {2,}/g, ' ').trim();
+
+            return { textoLimpo, indicesExcluidos };
+        }
+    };
+})();
 
 /* ================================================
    CONTROLE DE INTERFACE DE AUTENTICAÇÃO
@@ -117,6 +248,22 @@ window.ShortcutManager = (function() {
     const colors = { favorito: 'is-active-favorito', recursoAutora: 'is-active-autora', recursoReu: 'is-active-re', recursoReu2: 'is-active-re2', contestacao: 'is-active-re', contestacaoRe2: 'is-active-re2', sentenca: 'is-active-juizo' };
     const rotulos = { favorito: 'Favorito (Coringa)', recursoAutora: 'Recurso (Autora)', recursoReu: 'Recurso (Ré 1)', recursoReu2: 'Recurso (Ré 2)', contestacao: 'Contestação (Ré 1)', contestacaoRe2: 'Contestação (Ré 2)', sentenca: 'Sentença/Acórdão' };
 
+    // NOVA ARQUITETURA: Centralizador de Mutação de Estado e Persistência
+    async function _commitShortcut(type, pageNum) {
+        state[type] = pageNum;
+        updateUI();
+        
+        // Mensagem semântica dependendo se é inclusão ou exclusão
+        if (pageNum === null) {
+            exibirToast('Atalho removido.', 'sucesso');
+        } else {
+            exibirToast(`${rotulos[type]} atualizado para fl. ${pageNum}!`, 'sucesso');
+        }
+
+        // Desacoplamento seguro (Call by string check)
+        if (typeof salvarBackupAutomatico === 'function') await salvarBackupAutomatico();
+    }
+
     function updateUI() {
         Object.keys(state).forEach(type => {
             const btn = document.getElementById(getFabId(type));
@@ -124,20 +271,40 @@ window.ShortcutManager = (function() {
             
             btn.classList.remove('is-empty', 'is-active-favorito', 'is-active-autora', 'is-active-re', 'is-active-re2', 'is-active-juizo');
             
+            // Single Source of Truth para Tooltips (UX dinâmica)
             if (state[type] === null) {
                 btn.classList.add('is-empty');
-                btn.title = `Marcar página: ${rotulos[type]}`;
+                btn.title = `Marcar página: ${rotulos[type]}\n[Ctrl + Clique] p/ capturar a página atual`;
             } else {
                 btn.classList.add(colors[type]);
-                btn.title = `${rotulos[type]} (Pág. ${state[type]})\n[Shift + Clique] para editar`;
+                btn.title = `${rotulos[type]} (Pág. ${state[type]})\n[Shift + Clique] p/ editar\n[Ctrl + Clique] p/ capturar a página atual`;
             }
         });
     }
 
-    function handleClick(type, event) {
+    async function handleClick(type, event) {
         if (!window.PdfEngine || !PdfEngine.getPdfDoc()) {
             exibirToast('Carregue um documento primeiro.', 'aviso'); return;
         }
+
+        // FLUXO DE CAPTURA RÁPIDA (Early Return com Isolamento de Evento)
+        // Utilizando apenas Ctrl estrito (evitando falsos positivos com AltGr/Shift)
+        if (event.ctrlKey && !event.shiftKey && !event.altKey) {
+            event.preventDefault();
+            event.stopPropagation(); // Impede o "Event Bubbling" que fecha modais
+            
+            const currentPage = PdfEngine.getCurrentPage();
+            
+            // Validação defensiva rápida
+            if (currentPage > 0) {
+                await _commitShortcut(type, currentPage);
+            } else {
+                exibirToast('Não foi possível identificar a página atual.', 'erro');
+            }
+            return; 
+        }
+
+        // FLUXO ORIGINAL (Modal de Edição ou Navegação)
         if (state[type] === null || event.shiftKey) {
             abrirModal(type);
         } else {
@@ -167,20 +334,17 @@ window.ShortcutManager = (function() {
         const val = document.getElementById('shortcut-page-input').value.trim();
         const parsed = parseInt(val, 10);
         
+        // Delegação de mutação para o orquestrador
         if (val === '') {
-            state[currentEditingType] = null;
-            exibirToast('Atalho removido.', 'sucesso');
+            await _commitShortcut(currentEditingType, null);
         } else if (!isNaN(parsed) && parsed > 0) {
-            state[currentEditingType] = parsed;
-            exibirToast('Atalho salvo com sucesso!', 'sucesso');
+            await _commitShortcut(currentEditingType, parsed);
         } else {
             exibirToast('Número de página inválido.', 'erro');
             return;
         }
         
         fecharModal();
-        updateUI();
-        if (typeof salvarBackupAutomatico === 'function') await salvarBackupAutomatico();
     }
 
     function getFabId(type) {
@@ -362,6 +526,13 @@ window.toggleModoFoco = function(ativar) {
     else pdfWrapper.classList.remove('pdf-foco-ativo');
 };
 
+window.toggleFocoModal = function(ativar) {
+    const alvo = document.querySelector('.main-content');
+    if (!alvo) return;
+    if (ativar) alvo.classList.add('pdf-foco-ativo');
+    else alvo.classList.remove('pdf-foco-ativo');
+};
+
 function trocarAba(aba) {
     document.body.dataset.activeTab = aba;
 
@@ -375,6 +546,9 @@ function trocarAba(aba) {
     
     const btnExportar = document.getElementById('btn-exportar-topico');
     if (btnExportar) btnExportar.style.display = isAnotacoes ? 'flex' : 'none';
+
+    const btnContrato = document.getElementById('btn-contrato-trabalho');
+    if (btnContrato) btnContrato.style.display = isAnotacoes ? 'flex' : 'none';
 
     // GERENCIAMENTO DA VISIBILIDADE DO GERADOR DE CONTEXTO
     const btnGerador = document.getElementById('btn-gerador-contexto');
@@ -467,7 +641,7 @@ function atualizarStatusBackup(texto, ativa = false) {
 }
 
 function habilitarFerramentasDeTrabalho() {
-    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-balanca-justica', 'btn-ferramenta-extrator']
+    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-balanca-justica', 'btn-ferramenta-extrator', 'btn-visao-estruturada', 'btn-visao-minuta']
         .forEach(id => {
             const btn = document.getElementById(id);
             if (btn) btn.disabled = false;
@@ -503,6 +677,7 @@ function encerrarSessao() {
     if (typeof fecharPopupClassificacao === 'function') fecharPopupClassificacao();
     if (window.AudioManager) window.AudioManager.encerrar();
     if (window.TimeTrackerManager) window.TimeTrackerManager.parar();
+    if (window.TaskManager) window.TaskManager.setTarefasState([]);
 
     topicos      = [];
     modoRetomada = false;
@@ -533,7 +708,7 @@ function encerrarSessao() {
     }
     window._nomeArquivoSugerido = null;
 
-    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-ferramenta-extrator']
+    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-ferramenta-extrator', 'btn-visao-estruturada', 'btn-visao-minuta']
         .forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -723,10 +898,10 @@ function renderizarTopicos() {
     }
 }
 
-function capturarTrechoSelecionado() {
+async function capturarTrechoSelecionado() {
     const selection = window.getSelection();
-    
-    // [NOVO] Executa o Data Sanitization Pipeline antes de validar o length
+
+    // 1. Pipeline de Higienização de Texto
     let selecaoTexto = selection.toString().trim();
     selecaoTexto = window.JurisUtils.limparTextoPDF(selecaoTexto);
 
@@ -735,46 +910,101 @@ function capturarTrechoSelecionado() {
         return;
     }
 
-    const node = selection.anchorNode;
-    if (!node) return;
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+    if (!anchorNode || !focusNode) return;
 
-    const element = node.nodeType === 3 ? node.parentNode : node;
-    const pageContainer = element.closest('.pdf-page-container');
+    const anchorContainer = (anchorNode.nodeType === 3 ? anchorNode.parentNode : anchorNode).closest('.pdf-page-container');
+    const focusContainer = (focusNode.nodeType === 3 ? focusNode.parentNode : focusNode).closest('.pdf-page-container');
 
-    if (!pageContainer) {
+    if (!anchorContainer || !focusContainer) {
         exibirToast('A seleção deve estar dentro do PDF.', 'aviso');
         return;
     }
 
-    const anchorPage = parseInt(pageContainer.dataset.pageNumber, 10);
+    const anchorPageNum = parseInt(anchorContainer.dataset.pageNumber, 10);
+    const focusPageNum = parseInt(focusContainer.dataset.pageNumber, 10);
+
+    const minPage = Math.min(anchorPageNum, focusPageNum);
+    const maxPage = Math.max(anchorPageNum, focusPageNum);
+
+    // 2. DOM Read Phase
+    const cachedPages = [];
+    for (let i = minPage; i <= maxPage; i++) {
+        const pageEl = document.querySelector(`.pdf-page-container[data-page-number="${i}"]`);
+        if (pageEl) {
+            cachedPages.push({ page: i, rect: pageEl.getBoundingClientRect() });
+        }
+    }
+
+    // [NOVO] Busca o limite de rodapé por conteúdo (não percentual fixo) para cada página envolvida
+    if (window.PdfEngine && typeof window.PdfEngine.obterLimiteRodape === 'function') {
+        await Promise.all(cachedPages.map(async (p) => {
+            p.limiteRodape = await window.PdfEngine.obterLimiteRodape(p.page);
+        }));
+    }
+
     const range = selection.getRangeAt(0);
-    const rects = Array.from(range.getClientRects());
-    const containerRect = pageContainer.getBoundingClientRect();
+    const rawRects = Array.from(range.getClientRects());
+    const mappedRects = [];
 
-    _tempHighlightState.rects = rects.map(r => ({
-        top: r.top - containerRect.top,
-        left: r.left - containerRect.left,
-        width: r.width,
-        height: r.height
-    }));
-    _tempHighlightState.paginaFisica = anchorPage;
+    // 3. Compute Phase — descarta rects que caem na zona de assinatura
+    rawRects.forEach(rect => {
+        const midY = rect.top + (rect.height / 2);
+        const matchedPage = cachedPages.find(p => midY >= p.rect.top && midY <= p.rect.bottom);
 
+        if (matchedPage) {
+            const localTop = rect.top - matchedPage.rect.top;
+
+            // [NOVO] Se a linha estiver na zona de assinatura desta página específica, ignora o grifo
+            if (matchedPage.limiteRodape != null && localTop >= matchedPage.limiteRodape) {
+                return;
+            }
+
+            mappedRects.push({
+                page: matchedPage.page,
+                top: localTop,
+                left: rect.left - matchedPage.rect.left,
+                width: rect.width,
+                height: rect.height
+            });
+        }
+    });
+
+    if (mappedRects.length === 0) {
+        exibirToast('Seleção restrita à área de assinatura do documento.', 'aviso');
+        window.getSelection().removeAllRanges();
+        return;
+    }
+
+    // 4. Update de Estado
+    _tempHighlightState.rects = mappedRects;
+    _tempHighlightState.paginaFisica = anchorPageNum;
+
+    // 5. Restauração de UX
     if (typeof exibirPopupClassificacao === 'function') {
-        exibirPopupClassificacao('texto', selecaoTexto, rects[0].left, rects[0].bottom + 10, anchorPage);
+        const popupAnchorX = rawRects[rawRects.length - 1].left;
+        const popupAnchorY = rawRects[rawRects.length - 1].bottom + 10;
+        exibirPopupClassificacao('texto', selecaoTexto, popupAnchorX, popupAnchorY, anchorPageNum);
     }
 }
 
 function identificarFaseMetodologica(docNome) {
     if (!docNome) return 4; 
-    if (typeof DOC_CONFIG !== 'undefined') {
-        const conf = DOC_CONFIG.find(d => d.label === docNome);
+    
+    // 1. Busca na Single Source of Truth (SSOT) Global
+    if (window.DOC_CONFIG) {
+        const conf = window.DOC_CONFIG.find(d => d.label === docNome);
         if (conf) return conf.fase;
     }
+    
+    // 2. Fallback de Segurança e Retrocompatibilidade (Backups antigos)
     const upper = docNome.toUpperCase();
-    if (upper.includes('RECURSO') || upper.includes('CONTRARRAZÕES')) return 1;
-    if (upper.includes('INICIAL') || upper.includes('CONTEST') || upper.includes('IMPUGNAÇÃO')) return 2;
+    if (upper.includes('RECURSO') || upper.includes('CONTRARRAZÕES') || upper.includes('AGRAVO') || upper.includes('CONTRAMINUTA')) return 1;
+    if (upper.includes('INICIAL') || upper.includes('CONTEST') || upper.includes('IMPUGNAÇÃO') || upper.includes('TÍTULO') || upper.includes('CÁLCULOS')) return 2;
     if (upper.includes('SENTENÇA') || upper.includes('ACÓRDÃO') || upper.includes('DECISÃO') || upper.includes('EMBARGOS')) return 3;
-    return 4; 
+    
+    return 4; // Fase 4: Provas e Outros (Padrão)
 }
 
 /**
@@ -946,20 +1176,45 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
         if (typeof fecharPopupClassificacao === 'function') fecharPopupClassificacao();
         if (typeof cancelarRecorteWizard === 'function') cancelarRecorteWizard();
+        
+        // NOVO: Delegação genérica para fechamento de modais
+        const modaisFechaveis = document.querySelectorAll('.fechavel-por-esc');
+        modaisFechaveis.forEach(modal => {
+            if (modal.style.display === 'flex' || modal.style.display === 'block') {
+                // Infere o manager correto baseado no ID (Hardcoded seguro temporário para modais conhecidos)
+                if (modal.id === 'outline-view-modal' && window.OutlineViewManager) OutlineViewManager.fechar();
+                if (modal.id === 'minuta-view-modal' && window.MinutaViewManager) MinutaViewManager.fechar();
+                if (modal.id === 'modal-tarefas' && window.TaskManager) TaskManager.fecharModal();
+            }
+        });
     }
 });
 
 document.addEventListener('click', function (e) {
-    const popup = document.getElementById('classification-popup');
-    if (popup && popup.style.display === 'flex' && !popup.contains(e.target) && !e.target.closest('.icon-btn')) {
-        if (typeof fecharPopupClassificacao === 'function') fecharPopupClassificacao();
+    // 1. EARLY EXIT: Verifica Contrato Global de Ignorar Clique Fora
+    if (e.target.closest('[data-ignore-outside="true"]')) {
+        return; // Aborta a verificação de fechamento
     }
+
+    // 2. Lógica de Fechamento do Popup de Classificação
+    const popup = document.getElementById('classification-popup');
+    if (popup && popup.style.display === 'flex') {
+        const clicouForaDoPopup = !popup.contains(e.target);
+        const naoClicouEmBotao = !e.target.closest('.icon-btn');
+        
+        if (clicouForaDoPopup && naoClicouEmBotao) {
+            if (typeof fecharPopupClassificacao === 'function') fecharPopupClassificacao();
+        }
+    }
+    
+    // 3. Fechamento de Menus Contextuais
     const menu = document.getElementById('annotation-context-menu');
     if (menu) menu.style.display = 'none';
 
     const menuSub = document.getElementById('sub-annotation-context-menu');
     if (menuSub) menuSub.style.display = 'none';
 
+    // 4. Fechamento de Menus Flutuantes do Header
     const menuJuris = document.getElementById('juris-menu');
     if (menuJuris && menuJuris.style.display === 'flex' && !menuJuris.contains(e.target) && !e.target.closest('.sidebar-logo-container')) {
         menuJuris.style.display = 'none';
@@ -1308,6 +1563,9 @@ window.TimeTrackerManager = (function() {
     function handleClick() {
         document.getElementById('modal-tracker-backdrop').style.display = 'block';
         document.getElementById('modal-tracker-config').style.display = 'block';
+
+        // Ativa o desfoque de fundo
+        if (typeof window.toggleFocoModal === 'function') window.toggleFocoModal(true);
         
         const svgIcon = isRodando 
             ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px; height:18px; margin-right:6px; vertical-align:middle;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>'
@@ -1321,6 +1579,9 @@ window.TimeTrackerManager = (function() {
     function fecharModal() {
         document.getElementById('modal-tracker-backdrop').style.display = 'none';
         document.getElementById('modal-tracker-config').style.display = 'none';
+
+        // Desativa o desfoque de fundo
+        if (typeof window.toggleFocoModal === 'function') window.toggleFocoModal(false);
     }
 
     function iniciar() {
@@ -1479,3 +1740,210 @@ window.atualizarStatusBotaoExtrator = function() {
         btn.title = 'Alfinete de Extração (Marcar Início/Fim para IA)';
     }
 };
+
+/* ================================================
+   MÓDULO GERENCIADOR DE TAREFAS NATIVO (TASK MANAGER)
+   ================================================ */
+window.TaskManager = (function() {
+    let selectorArmTimer = null;
+
+    async function abrirModal(e) {
+        if(e) e.stopPropagation();
+        const backdrop = document.getElementById('tarefas-modal-backdrop');
+        const modal = document.getElementById('modal-tarefas');
+        
+        RenderCycle.bloquearScrollBody(true); // Evita bug de touch no mobile
+        
+        backdrop.style.display = 'block';
+        modal.style.display = 'flex'; // Exibe, mas DOM ainda não calculou layout
+        
+        await RenderCycle.awaitNextFrame(); // Aguarda cálculo seguro
+        
+        atualizarBadge();
+        const lista = document.getElementById('native-obs-list');
+        if(lista) lista.scrollTop = 0; // Reset seguro sem flickering
+    }
+
+    function fecharModal() {
+        document.getElementById('tarefas-modal-backdrop').style.display = 'none';
+        document.getElementById('modal-tarefas').style.display = 'none';
+        RenderCycle.bloquearScrollBody(false);
+        atualizarBadge();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    function adicionarTarefa() {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return;
+        const div = document.createElement('div');
+        div.className = 'native-task-item';
+        
+        div.innerHTML = `
+            <input type="checkbox" onchange="TaskManager.toggleConcluido(this)">
+            <div class="topic-circle-indicator" data-topic-id="global" title="Global" style="background-color: #ffffff; border: 2px solid #cbd5e1;" onclick="TaskManager.abrirSeletorTemas(this, event)"></div>
+            <input type="text" placeholder="Escreva sua tarefa..." oninput="this.setAttribute('value', this.value);">
+            <button onclick="this.parentElement.remove(); TaskManager.atualizarBadge();" style="border:none; background:none; cursor:pointer; color:#ef4444; margin-left: 8px;">✕</button>
+        `;
+        container.appendChild(div);
+        
+        // Desce o scroll suavemente para a nova tarefa
+        requestAnimationFrame(() => {
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        });
+        atualizarBadge();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    function toggleConcluido(chk) {
+        const item = chk.closest('.native-task-item');
+        if(chk.checked) {
+            item.classList.add('completed');
+            chk.setAttribute('checked', 'checked');
+        } else {
+            item.classList.remove('completed');
+            chk.removeAttribute('checked');
+        }
+        atualizarBadge();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    function atualizarBadge() {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return;
+        
+        const pendentes = container.querySelectorAll('input[type="checkbox"]:not(:checked)').length;
+        const btn = document.getElementById('btn-lembretes-tarefa');
+        const badge = document.getElementById('badge-tarefas');
+        
+        if (!btn) return;
+
+        if(pendentes > 0) {
+            btn.classList.add('has-tasks');
+            if(badge) {
+                badge.style.display = 'flex';
+                badge.textContent = pendentes > 99 ? '99+' : pendentes;
+            }
+        } else {
+            btn.classList.remove('has-tasks');
+            if(badge) badge.style.display = 'none';
+        }
+    }
+
+    function abrirSeletorTemas(circleEl, event) {
+        if (event) event.stopPropagation();
+
+        // Remove menus antigos
+        document.querySelectorAll('.obs-topic-selector-menu').forEach(m => m.remove());
+
+        const menu = document.createElement('div');
+        menu.className = 'obs-topic-selector-menu jcs-options-portal';
+        menu.style.visibility = 'hidden'; 
+        menu.style.position = 'fixed';
+        menu.style.width = '200px';
+
+        const optionGlobal = document.createElement('div');
+        optionGlobal.className = 'jcs-option';
+        optionGlobal.innerHTML = `<div class="jcs-color-dot" style="background: #ffffff; border: 1px solid #ccc;"></div> Global`;
+        optionGlobal.addEventListener('click', () => applyTheme(circleEl, 'global', 'Global', '#ffffff', menu));
+        menu.appendChild(optionGlobal);
+
+        if (typeof topicos !== 'undefined' && topicos.length > 0) {
+            const div = document.createElement('div');
+            div.style.height = '1px';
+            div.style.backgroundColor = '#eee';
+            menu.appendChild(div);
+
+            topicos.forEach(t => {
+                const opt = document.createElement('div');
+                opt.className = 'jcs-option';
+                opt.innerHTML = `<div class="jcs-color-dot" style="background: ${t.cor};"></div> <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.nome}</span>`;
+                opt.addEventListener('click', () => applyTheme(circleEl, t.id, t.nome, t.cor, menu));
+                menu.appendChild(opt);
+            });
+        }
+
+        document.body.appendChild(menu);
+
+        const rect = circleEl.getBoundingClientRect();
+        menu.style.left = rect.left + 'px';
+        menu.style.top = (rect.bottom + 4) + 'px';
+
+        requestAnimationFrame(() => {
+            menu.style.visibility = 'visible';
+        });
+
+        if (selectorArmTimer) clearTimeout(selectorArmTimer);
+        selectorArmTimer = setTimeout(() => {
+            const closeFn = () => {
+                menu.remove();
+                document.removeEventListener('click', closeFn);
+            };
+            document.addEventListener('click', closeFn);
+        }, 50);
+    }
+
+    function applyTheme(circleEl, id, nome, cor, menu) {
+        circleEl.dataset.topicId = id;
+        circleEl.style.backgroundColor = cor;
+        circleEl.title = nome;
+        if(id === 'global') {
+            circleEl.style.border = '2px solid #cbd5e1';
+            circleEl.style.boxShadow = 'none';
+        } else {
+            circleEl.style.border = '2px solid transparent';
+            circleEl.style.boxShadow = `0 0 6px ${cor}40`;
+        }
+        menu.remove();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    // Exporta estado das tarefas para a IA, se necessário futuramente
+    function getTarefasState() {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return [];
+        
+        return Array.from(container.querySelectorAll('.native-task-item')).map(item => {
+            const chk = item.querySelector('input[type="checkbox"]');
+            const txt = item.querySelector('input[type="text"]');
+            const ind = item.querySelector('.topic-circle-indicator');
+            return {
+                concluida: chk.checked,
+                texto: txt.value,
+                topicId: ind ? ind.dataset.topicId : 'global',
+                topicCor: ind ? ind.style.backgroundColor : '#ffffff'
+            };
+        });
+    }
+
+    function setTarefasState(tarefasArray) {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return;
+        container.innerHTML = '';
+        
+        if(!tarefasArray || tarefasArray.length === 0) {
+            atualizarBadge();
+            return;
+        }
+
+        tarefasArray.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'native-task-item';
+            if(t.concluida) div.classList.add('completed');
+            
+            const checkedAttr = t.concluida ? 'checked="checked"' : '';
+            const borderStyle = t.topicId === 'global' ? '2px solid #cbd5e1' : '2px solid transparent';
+            const shadowStyle = t.topicId === 'global' ? 'none' : `0 0 6px ${t.topicCor}40`;
+
+            div.innerHTML = `
+                <input type="checkbox" onchange="TaskManager.toggleConcluido(this)" ${checkedAttr}>
+                <div class="topic-circle-indicator" data-topic-id="${t.topicId}" title="${t.topicId === 'global' ? 'Global' : 'Tópico Específico'}" style="background-color: ${t.topicCor}; border: ${borderStyle}; box-shadow: ${shadowStyle};" onclick="TaskManager.abrirSeletorTemas(this, event)"></div>
+                <input type="text" placeholder="Escreva sua tarefa..." value="${t.texto.replace(/"/g, '&quot;')}" oninput="this.setAttribute('value', this.value);">
+                <button onclick="this.parentElement.remove(); TaskManager.atualizarBadge();" style="border:none; background:none; cursor:pointer; color:#ef4444; margin-left: 8px;">✕</button>
+            `;
+            container.appendChild(div);
+        });
+        atualizarBadge();
+    }
+
+    return { abrirModal, fecharModal, adicionarTarefa, toggleConcluido, atualizarBadge, abrirSeletorTemas, getTarefasState, setTarefasState };
+})();

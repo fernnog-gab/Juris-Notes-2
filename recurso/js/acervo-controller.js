@@ -32,6 +32,11 @@ const TAMANHO_LOTE_RENDERIZACAO = 20;
 let _observerScrollAcervo = null;
 let _eventDelegationAtivo = false;
 
+// ==========================================
+// TRAVA DE ESTADO ARQUITETURAL (State Lock)
+// ==========================================
+let _isViewTransitioning = false;
+
 // HELPER PRIVADO: Manipulação segura de DOM
 function _safeDisplay(id, styleStr) {
     const el = document.getElementById(id);
@@ -66,6 +71,15 @@ window.atualizarIconeAcervoUI = function(selectElement) {
 
 // Filtro totalmente em memória (RAM Speed)
 window.filtrarListaUI = function(termo, listaId) { // listaId mantido para retrocompatibilidade
+    // GUARD CLAUSE: Impede mutação do DOM durante transições ou modo foco ativo
+    const focusView = document.getElementById('acervo-focus-view');
+    const isFocoAtivo = focusView && focusView.classList.contains('is-active');
+    
+    if (_isViewTransitioning || isFocoAtivo) {
+        console.warn("[Acervo] Mutação de lista bloqueada: UI travada pelo modo foco.");
+        return; 
+    }
+
     const termoMin = termo.toLowerCase().trim();
     
     if (!termoMin) {
@@ -97,16 +111,22 @@ window.filtrarListaUI = function(termo, listaId) { // listaId mantido para retro
 
 window.debounce = function(func, wait) {
     let timeout;
-    return function(...args) {
+    const debounced = function(...args) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(this, args), wait);
     };
+    debounced.cancel = () => clearTimeout(timeout);
+    return debounced;
 };
 window.filtrarListaUIDebounced = window.debounce(window.filtrarListaUI, 300);
 
 // ==========================================
 // MÓDULO 1: SALVAR NO ACERVO
 // ==========================================
+
+// 1. Definição do Cache de Estado (Isolado)
+let _modelosSalvarCache = [];
+
 window.abrirModalSalvarModelo = function() {
     if (!window.AcervoManager) return exibirToast('Conecte-se ao Firebase primeiro.', 'erro');
     if (typeof _menuSubAnotacaoCtx === 'undefined' || !_menuSubAnotacaoCtx) return;
@@ -129,6 +149,10 @@ window.abrirModalSalvarModelo = function() {
     document.querySelector('input[name="modo_salvar_modelo"][value="novo"]').checked = true;
     document.getElementById('input-nome-modelo').value = '';
     
+    // Limpeza de segurança na abertura
+    const inputBusca = document.getElementById('input-busca-modelo');
+    if (inputBusca) inputBusca.value = '';
+    
     document.getElementById('wizard-backdrop').style.display = 'block';
     document.getElementById('modal-salvar-modelo').style.display = 'flex';
     window.toggleModoSalvarModelo(); 
@@ -144,28 +168,70 @@ window.toggleModoSalvarModelo = function() {
         container.innerHTML = '<div class="acervo-loader"></div>';
         
         AcervoManager.carregarModelos().then(modelos => {
-            container.innerHTML = modelos.length === 0 ? '<p style="text-align:center; font-size:0.8rem;">Nenhum modelo encontrado.</p>' : '';
-            modelos.forEach(mod => {
-                const item = document.createElement('div');
-                item.className = 'acervo-item';
-                item.innerHTML = `<div class="acervo-item-titulo">${TopicsManager.escaparHTML(mod.nome)}</div><div style="font-size:0.7rem; color:#888;">${mod.nos.length} nó(s) salvos</div>`;
-                item.onclick = () => {
-                    document.querySelectorAll('#lista-modelos-salvar .acervo-item').forEach(el => el.classList.remove('selected'));
-                    item.classList.add('selected');
-                    _modeloSelecionadoId = mod.id;
-                };
-                container.appendChild(item);
-            });
+            _modelosSalvarCache = modelos; // Popula o cache em memória
+            window.renderizarListaSalvarModelos(_modelosSalvarCache); // Aciona renderização dedicada
         }).catch(() => {
             container.innerHTML = '<p style="color:red; font-size:0.8rem;">Erro ao conectar. Faça login.</p>';
         });
     }
 };
 
+// 3. Novas Funções de Renderização e Filtro Isoladas
+window.renderizarListaSalvarModelos = function(modelosParaRenderizar) {
+    const container = document.getElementById('lista-modelos-salvar');
+    container.innerHTML = '';
+    
+    if (modelosParaRenderizar.length === 0) {
+        container.innerHTML = '<p style="text-align:center; font-size:0.8rem; padding: 10px 0;">Nenhum modelo encontrado.</p>';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    
+    modelosParaRenderizar.forEach(mod => {
+        const item = document.createElement('div');
+        item.className = 'acervo-item';
+        
+        // Mantém a seleção visual caso haja repintura do DOM após filtro
+        if (_modeloSelecionadoId === mod.id) item.classList.add('selected');
+        
+        item.innerHTML = `<div class="acervo-item-titulo">${TopicsManager.escaparHTML(mod.nome)}</div><div style="font-size:0.7rem; color:#888;">${mod.nos.length} nó(s) salvos</div>`;
+        item.onclick = () => {
+            document.querySelectorAll('#lista-modelos-salvar .acervo-item').forEach(el => el.classList.remove('selected'));
+            item.classList.add('selected');
+            _modeloSelecionadoId = mod.id;
+        };
+        fragment.appendChild(item);
+    });
+    
+    container.appendChild(fragment);
+};
+
+window.filtrarModelosSalvar = function(termo) {
+    const termoMin = termo.toLowerCase().trim();
+    
+    const filtrados = termoMin 
+        ? _modelosSalvarCache.filter(mod => mod.nome.toLowerCase().includes(termoMin)) 
+        : _modelosSalvarCache;
+        
+    window.renderizarListaSalvarModelos(filtrados);
+};
+
+// Aplicação do Debounce (evita travamento de UI durante a digitação)
+window.filtrarModelosSalvarDebounced = window.debounce(window.filtrarModelosSalvar, 300);
+
+// 4. CORREÇÃO CRÍTICA DO CICLO DE VIDA (Teardown)
 window.fecharModalSalvarModelo = function() {
     document.getElementById('wizard-backdrop').style.display = 'none';
     document.getElementById('modal-salvar-modelo').style.display = 'none';
+    
+    // Limpeza de Estado Nativo
     _noAlvoParaSalvar = null;
+    
+    // NOVA LIMPEZA (Stale State Prevention)
+    _modelosSalvarCache = []; // Esvazia a memória
+    const inputBusca = document.getElementById('input-busca-modelo');
+    if (inputBusca) inputBusca.value = ''; // Limpa o front-end
 };
 
 window.confirmarSalvarModelo = async function() {
@@ -238,7 +304,7 @@ window.abrirModalAcervo = function() {
     
     const listView = document.getElementById('acervo-list-view');
     if (listView) {
-        listView.style.display = 'block';
+        listView.style.display = 'flex';
         listView.style.opacity = '1';
     }
     
@@ -374,6 +440,8 @@ function configurarEventDelegation() {
         // 2. Verifica se clicou no Card do Modelo (para ativar o Foco)
         const card = e.target.closest('.acervo-item');
         if (card) {
+            e.preventDefault();
+            e.stopPropagation(); // Isola o evento
             selecionarEAtivarModelo(card, card.dataset.id);
         }
     });
@@ -383,13 +451,23 @@ function configurarEventDelegation() {
 
 // Lógica isolada chamada pelo Event Delegation
 function selecionarEAtivarModelo(cardElement, modeloId) {
-    document.querySelectorAll('#acervo-items-wrapper .acervo-item').forEach(el => el.classList.remove('selected'));
-    cardElement.classList.add('selected');
-    
-    const mod = _todosModelosEmMemoria.find(m => m.id === modeloId);
-    if (!mod) return;
+    // 1. Aborta execuções pendentes e ativa a trava arquitetural
+    if (window.filtrarListaUIDebounced && window.filtrarListaUIDebounced.cancel) {
+        window.filtrarListaUIDebounced.cancel();
+    }
+    _isViewTransitioning = true; // Trava o estado
 
-    _modeloSelecionadoId = mod.id;
+    try {
+        document.querySelectorAll('#acervo-items-wrapper .acervo-item').forEach(el => el.classList.remove('selected'));
+        cardElement.classList.add('selected');
+        
+        const mod = _todosModelosEmMemoria.find(m => m.id === modeloId);
+        if (!mod) {
+            _isViewTransitioning = false; // Libera trava em caso de falha
+            return;
+        }
+
+        _modeloSelecionadoId = mod.id;
     _modeloSelecionadoNodes = mod.nos;
     _modeloSelecionadoEscopo = mod.escopo || 'card';
     
@@ -448,6 +526,11 @@ function selecionarEAtivarModelo(cardElement, modeloId) {
     }
 
     _safeDisplay('btn-inserir-acervo', 'block');
+    
+    } catch (error) {
+        _isViewTransitioning = false; // Libera trava em caso de erro crítico
+        console.error("[AcervoController] Erro ao selecionar modelo:", error);
+    }
 }
 
 // ==========================================
@@ -954,7 +1037,8 @@ window.exportarBaseParaNotebookLM = async function(event) {
         _downloadTextoComoArquivo(`JurisNotes_Acervo_Exportacao_${dataFormatada}.txt`, txtConteudo);
 
         // 3. Destruição visual de Modais (Bypass de Side-effects)
-        // Evitamos chamar as funções originais do sistema para não disparar 'reads' desnecessários no Firebase.
+        // NOTA ARQUITETURAL: Intencionalmente NÃO removemos a classe pdf-foco-ativo aqui.
+        // Isso garante a continuidade visual da lona de desfoque durante a transição.
         const modalTags = document.getElementById('modal-gerenciar-tags');
         const modalAcervo = document.getElementById('modal-acervo-inserir');
         const wizardBackdrop = document.getElementById('wizard-backdrop');
@@ -965,6 +1049,11 @@ window.exportarBaseParaNotebookLM = async function(event) {
         
         // 4. Exibição do Prompt
         window.abrirModalPromptNotebookLM();
+
+        // 5. UX ENHANCEMENT: Auto-copy imediato aproveitando o contexto de clique do evento original
+        setTimeout(() => {
+            window.copiarPromptNotebookLM();
+        }, 100);
 
     } catch (error) {
         console.error("[AcervoController] Erro na exportação:", error);
@@ -984,8 +1073,18 @@ window.abrirModalPromptNotebookLM = function() {
 };
 
 window.fecharModalPromptNotebookLM = function() {
+    // Oculta o modal de prompt
     document.getElementById('prompt-notebooklm-backdrop').style.display = 'none';
     document.getElementById('modal-prompt-notebooklm').style.display = 'none';
+    
+    // LIMPEZA DEFENSIVA E EXPLÍCITA:
+    // Varredura direta no DOM para matar o estado de foco translúcido (blur)
+    // que foi injetado imperativamente pelo fluxo legado do Acervo.
+    const historyContainer = document.getElementById('history-container');
+    const pdfContainer = document.getElementById('pdf-container');
+    
+    if (historyContainer) historyContainer.classList.remove('pdf-foco-ativo');
+    if (pdfContainer) pdfContainer.classList.remove('pdf-foco-ativo');
 };
 
 window.copiarPromptNotebookLM = function() {
@@ -1013,7 +1112,8 @@ window.copiarPromptNotebookLM = function() {
 // ==========================================
 
 window.ativarModoFocoAcervo = function(tituloModelo) {
-    document.getElementById('focus-modelo-titulo').textContent = TopicsManager.escaparHTML(tituloModelo);
+    const tituloEl = document.getElementById('focus-modelo-titulo');
+    if (tituloEl) tituloEl.textContent = TopicsManager.escaparHTML(tituloModelo);
     
     const listView = document.getElementById('acervo-list-view');
     const focusView = document.getElementById('acervo-focus-view');
@@ -1024,13 +1124,19 @@ window.ativarModoFocoAcervo = function(tituloModelo) {
         listView.style.display = 'none';
         // Prepara e anima entrada do foco
         focusView.style.display = 'flex';
-        // Força reflow mínimo para garantir a animação de entrada
+        // Força reflow para o motor do navegador entender a mudança de display antes de animar
         void focusView.offsetWidth; 
-        focusView.classList.add('is-active');
-    }, 250); // Sincronizado com CSS
+        
+        focusView.classList.add('is-active'); // CSS assume controle total da opacidade e transição
+        
+        // Libera a trava de estado com folga de segurança após a animação
+        setTimeout(() => { _isViewTransitioning = false; }, 50); 
+    }, 250); // Tempo sincronizado com a transition do CSS
 };
 
 window.desativarModoFocoAcervo = function() {
+    _isViewTransitioning = true; // Trava a UI durante o retorno
+    
     const listView = document.getElementById('acervo-list-view');
     const focusView = document.getElementById('acervo-focus-view');
     
@@ -1038,16 +1144,20 @@ window.desativarModoFocoAcervo = function() {
     document.getElementById('modal-acervo-inserir').classList.remove('is-fullscreen');
     
     focusView.classList.remove('is-active');
-    focusView.style.opacity = '0';
+    
     setTimeout(() => {
         focusView.style.display = 'none';
-        listView.style.display = 'block';
-        void listView.offsetWidth;
+        
+        listView.style.display = 'flex';
+        void listView.offsetWidth; // Força reflow
         listView.style.opacity = '1';
         
         // Limpa estado selecionado (legado)
         document.querySelectorAll('#lista-acervo-geral .acervo-item').forEach(el => el.classList.remove('selected'));
         _modeloSelecionadoId = null;
+        
+        // Libera a trava após o painel voltar à tela
+        setTimeout(() => { _isViewTransitioning = false; }, 50);
     }, 250);
 };
 

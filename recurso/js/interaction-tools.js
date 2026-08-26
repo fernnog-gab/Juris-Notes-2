@@ -35,6 +35,198 @@ let _ultimoTopicoUsadoId     = null;  // Memória inteligente: pré-seleciona na
 let pendingTipo     = null;   // Tipo da extração pendente: 'texto' | 'imagem'
 let pendingConteudo = null;   // Conteúdo bruto da extração pendente
 
+/* ================================================
+   CONTROLADOR SINGLETON DO DROPDOWN (PREVINE MEMORY LEAKS E CLIPPING)
+   ================================================ */
+const DropdownManager = (function() {
+    // Escopo Privado de Estado
+    let _activeTrigger = null;
+    let _activePortal = null;
+    let _eventosGlobaisRegistrados = false;
+
+    // Métodos Privados
+    function fecharAtivo() {
+        if (_activePortal) {
+            _activePortal.remove();
+            _activePortal = null;
+        }
+        if (_activeTrigger) {
+            _activeTrigger.setAttribute('aria-expanded', 'false');
+            _activeTrigger.focus();
+            _activeTrigger = null;
+        }
+    }
+
+    function registrarEventosGerais() {
+        if (_eventosGlobaisRegistrados) return;
+        
+        // Clica fora fecha o dropdown
+        document.addEventListener('click', (e) => {
+            if (_activePortal && !_activePortal.contains(e.target) && !_activeTrigger.contains(e.target)) {
+                fecharAtivo();
+            }
+        });
+
+        // CORREÇÃO DO BUG DO SCROLL: Ignora se o scroll vier de dentro do próprio Portal
+        window.addEventListener('scroll', (e) => {
+            if (_activePortal && (e.target === _activePortal || _activePortal.contains(e.target))) {
+                return; // Permite rolar a lista sem fechá-la
+            }
+            fecharAtivo();
+        }, { passive: true, capture: true });
+        
+        window.addEventListener('resize', fecharAtivo, { passive: true });
+        
+        _eventosGlobaisRegistrados = true;
+    }
+
+    function abrirPortal(triggerEl, topicosArray, selectNativo, onSelectCallback) {
+        fecharAtivo(); 
+        
+        _activeTrigger = triggerEl;
+        _activeTrigger.setAttribute('aria-expanded', 'true');
+
+        const rect = triggerEl.getBoundingClientRect();
+    
+    _activePortal = document.createElement('div');
+    _activePortal.className = 'jcs-options-portal';
+    _activePortal.setAttribute('role', 'listbox');
+    
+    // -> NOVA LINHA INJETADA (CONTRATO DE ARQUITETURA): 
+    // Blinda este elemento e seus filhos contra o fechamento global de modais
+    _activePortal.setAttribute('data-ignore-outside', 'true');
+    
+    // CORREÇÃO DA LARGURA: Pelo menos a largura do botão, mas garantindo 380px para leitura
+        const desiredWidth = Math.max(rect.width, 380);
+        _activePortal.style.width = `${desiredWidth}px`;
+
+        // Proteção para a lista alargada não vazar o monitor pela direita
+        if (rect.left + desiredWidth > window.innerWidth) {
+            _activePortal.style.left = `${window.innerWidth - desiredWidth - 16}px`;
+        } else {
+            _activePortal.style.left = `${rect.left}px`;
+        }
+        
+        _activePortal.style.top = `${rect.bottom + 4}px`;
+
+        let focusedIndex = -1;
+        const optionsNodes = [];
+
+        topicosArray.forEach((t, index) => {
+            const opt = document.createElement('div');
+            opt.className = 'jcs-option';
+            opt.setAttribute('role', 'option');
+            opt.innerHTML = `<div class="jcs-color-dot" style="background-color: ${t.cor};"></div> <span>${t.nome}</span>`;
+            
+            const selecionarOpcao = () => {
+                selectNativo.value = t.id;
+                triggerEl.querySelector('.jcs-trigger-content').innerHTML = opt.innerHTML;
+                
+                selectNativo.dispatchEvent(new Event('change'));
+                if (onSelectCallback) onSelectCallback(t);
+                
+                fecharAtivo();
+            };
+
+            opt.addEventListener('click', selecionarOpcao);
+            opt.addEventListener('mousemove', () => atualizarFoco(index));
+
+            optionsNodes.push({ node: opt, selectFn: selecionarOpcao });
+            _activePortal.appendChild(opt);
+        });
+
+        function atualizarFoco(newIndex) {
+            if (focusedIndex >= 0) optionsNodes[focusedIndex].node.classList.remove('is-focused');
+            focusedIndex = newIndex;
+            if (focusedIndex >= 0) {
+                optionsNodes[focusedIndex].node.classList.add('is-focused');
+                optionsNodes[focusedIndex].node.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        _activePortal.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                atualizarFoco((focusedIndex + 1) % optionsNodes.length);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                atualizarFoco((focusedIndex - 1 + optionsNodes.length) % optionsNodes.length);
+            } else if (e.key === 'Enter' && focusedIndex >= 0) {
+                e.preventDefault();
+                optionsNodes[focusedIndex].selectFn();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                fecharAtivo();
+            }
+        });
+
+        document.body.appendChild(_activePortal); 
+        _activePortal.setAttribute('tabindex', '-1');
+        _activePortal.focus(); 
+    }
+
+    // Método Público a ser revelado
+    function renderizar(selectId, topicosArray, preSelecionadoId = null, onSelectCallback = null) {
+        registrarEventosGerais();
+        
+        const selectNativo = document.getElementById(selectId);
+        if (!selectNativo) return;
+
+        // INVERSÃO DA ORDEM: Clona o array original e inverte para jogar os recentes para o topo
+        const topicosOrdenados = [...topicosArray].reverse();
+
+        selectNativo.innerHTML = '<option value="">Selecione o Tópico...</option>';
+        topicosOrdenados.forEach(t => selectNativo.appendChild(new Option(t.nome, t.id)));
+        if (preSelecionadoId) selectNativo.value = preSelecionadoId;
+        
+        selectNativo.classList.add('sr-only');
+
+        const wrapperAntigo = selectNativo.nextElementSibling;
+        if (wrapperAntigo && wrapperAntigo.classList.contains('juris-custom-select')) {
+            wrapperAntigo.remove();
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'juris-custom-select';
+        
+        const topicoInicial = topicosOrdenados.find(t => t.id === preSelecionadoId);
+        const triggerHtml = topicoInicial 
+            ? `<div class="jcs-color-dot" style="background-color: ${topicoInicial.cor};"></div> <span>${topicoInicial.nome}</span>`
+            : `<span class="jcs-placeholder-text">Selecione o Tópico...</span>`;
+
+        wrapper.innerHTML = `
+            <div class="jcs-trigger" tabindex="0" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                <div style="display:flex; align-items:center; gap:10px;" class="jcs-trigger-content">
+                    ${triggerHtml}
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="width:16px; height:16px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+        `;
+
+        const triggerBtn = wrapper.querySelector('.jcs-trigger');
+
+        const abrir = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Passa os tópicos já ordenados para o Portal
+            abrirPortal(triggerBtn, topicosOrdenados, selectNativo, onSelectCallback);
+        };
+
+        triggerBtn.addEventListener('click', abrir);
+        triggerBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') abrir(e);
+        });
+
+        selectNativo.parentNode.insertBefore(wrapper, selectNativo.nextSibling);
+    }
+
+    return { 
+        renderizar 
+    };
+})();
+
+window.DropdownManager = DropdownManager;
+
 window.toggleModoFoco = function(ativar) {
     // Agora capturamos OS DOIS painéis principais da tela
     const pdfContainer = document.getElementById('pdf-container');
@@ -52,16 +244,19 @@ window.toggleModoFoco = function(ativar) {
 };
 
 // --- CONFIGURAÇÃO CENTRAL DE DOCUMENTOS ---
-const DOC_CONFIG = [
+// Agora exportado globalmente para que os outros arquivos possam ler
+window.DOC_CONFIG = [
     // --- FASE 1: Postulação e Recursos ---
     { label: 'Recurso Ordinário', polo: 'DUAL', tipo: 'dual', fase: 1 },
     { label: 'Contrarrazões', polo: 'DUAL', tipo: 'dual', fase: 1 },
+    // INCLUSÃO: Recursos da Fase de Execução
+    { label: 'Agravo de Petição', polo: 'DUAL', tipo: 'dual', fase: 1, isExecucao: true },
+    { label: 'Contraminuta (ao Agravo)', polo: 'DUAL', tipo: 'dual', fase: 1, isExecucao: true },
 
     // --- FASE 2: Gênese do Conflito ---
     { label: 'Petição Inicial', polo: 'Parte Autora', tipo: 'auto', fase: 2 },
     { label: 'Contestação', polo: 'Parte Ré', tipo: 'auto', fase: 2 },
     { label: 'Impugnação à Contestação', polo: 'Parte Autora', tipo: 'auto', fase: 2 },
-    // Novas Entradas Execução:
     { label: 'Título Executivo', polo: 'Juízo / Tribunal', tipo: 'auto', fase: 2, isExecucao: true },
     { label: 'Cálculos de Liquidação', polo: 'DUAL', tipo: 'dual', fase: 2, isExecucao: true },
     { label: 'Embargos à Execução', polo: 'Parte Executada', tipo: 'auto', fase: 2, isExecucao: true },
@@ -71,7 +266,6 @@ const DOC_CONFIG = [
     { label: 'Sentença', polo: 'Juízo', tipo: 'auto', fase: 3 },
     { label: 'Acórdão / Decisão TRT', polo: 'Juízo', tipo: 'auto', fase: 3 },
     { label: 'Sentença de Embargos de Declaração', polo: 'Juízo', tipo: 'auto', fase: 3 },
-    // Novas Entradas Execução:
     { label: 'Sentença de Liquidação', polo: 'Juízo', tipo: 'auto', fase: 3, isExecucao: true },
     { label: 'Decisão de Embargos à Execução', polo: 'Juízo', tipo: 'auto', fase: 3, isExecucao: true },
 
@@ -80,7 +274,6 @@ const DOC_CONFIG = [
     { label: 'Laudo Pericial', polo: 'Perito', tipo: 'auto', fase: 4 },
     { label: 'Documento (Prova Pré-constituída)', polo: 'DUAL', tipo: 'dual', fase: 4 },
     { label: 'Despacho / Decisão', polo: 'Juízo', tipo: 'auto', fase: 4 },
-    // Novas Entradas Execução (substituindo a antiga genérica):
     { label: 'Mandado de Penhora', polo: 'Auxiliar da Justiça', tipo: 'auto', fase: 4, isExecucao: true },
     { label: 'Bacenjud / Sisbajud', polo: 'Juízo / Tribunal', tipo: 'auto', fase: 4, isExecucao: true },
     { label: 'Decisão / Despacho (Execução)', polo: 'Juízo / Tribunal', tipo: 'auto', fase: 4, isExecucao: true },
@@ -112,7 +305,20 @@ function renderizarFasesModais(context) {
             btn.classList.add(`active-f${f.id}`);
             
             listContainer.innerHTML = '';
-            DOC_CONFIG.filter(doc => doc.fase === f.id).forEach(doc => {
+            let inseriuSeparadorExecucao = false;
+
+            // Usa a nova matriz global
+            window.DOC_CONFIG.filter(doc => doc.fase === f.id).forEach(doc => {
+                
+                // Injeta um mini-separador visual na Fase 1 para dividir Conhecimento de Execução
+                if (f.id === 1 && doc.isExecucao && !inseriuSeparadorExecucao) {
+                    const sep = document.createElement('div');
+                    sep.style.cssText = "width:100%; text-align:center; margin: 12px 0 6px 0; font-size:0.75rem; color:#64748b; font-weight:bold; text-transform:uppercase; border-bottom:1px dashed #cbd5e1; padding-bottom:4px;";
+                    sep.textContent = "Fase de Execução";
+                    listContainer.appendChild(sep);
+                    inseriuSeparadorExecucao = true;
+                }
+
                 const docBtn = document.createElement('button');
                 docBtn.className = `doc-btn ${doc.tipo}`;
                 docBtn.textContent = doc.label;
@@ -169,28 +375,41 @@ function selecionarDocumento(docLabel, polo, context) {
         _docSelecionado = docLabel;
         _isWizardContext = (context === 'wizard');
         
-        const conf = DOC_CONFIG.find(d => d.label === docLabel);
-        const isExecucao = conf && conf.isExecucao;
+        // CORREÇÃO AQUI: Agora lê do window.DOC_CONFIG
+        const conf = window.DOC_CONFIG.find(d => d.label === docLabel);
 
         const targetDocText = context === 'popup' ? 'popup-doc-selecionado' : 'wizard-doc-selecionado';
         const targetContainer = context === 'popup' ? 'popup-polo-buttons-container' : 'wizard-polo-buttons-container';
         
         document.getElementById(targetDocText).innerText = docLabel;
         
-        // 1. Dicionário de UI (Single Source of Truth para Botões)
         const botoesDef = {
             autora:    `<button class="chip-btn chip-autora" onclick="confirmarPolo('Parte Autora', event)">✔ Parte Autora</button>`,
             re:        `<button class="chip-btn chip-re" onclick="confirmarPolo('Parte Ré', event)">✔ Parte Ré</button>`,
             exequente: `<button class="chip-btn chip-exequente" onclick="confirmarPolo('Parte Exequente', event)">✔ Parte Exequente</button>`,
             executada: `<button class="chip-btn chip-executada" onclick="confirmarPolo('Parte Executada', event)">✔ Parte Executada</button>`,
             juizo:     `<button class="chip-btn chip-juizo" onclick="confirmarPolo('Juízo / Tribunal', event)">🏛️ Juízo / Tribunal</button>`,
-            auxiliar:  `<button class="chip-btn chip-auxiliar" onclick="confirmarPolo('Auxiliar da Justiça', event)">⚖️ Auxiliar da Justiça</button>`
+            auxiliar:  `<button class="chip-btn chip-auxiliar" onclick="confirmarPolo('Auxiliar da Justiça', event)">⚖️ Auxiliar da Justiça</button>`,
+            
+            // AQUI ENTRA O NOSSO BLOCO DO TERCEIRO
+            terceiro:  `<div style="display:flex; flex-direction:column; gap:6px; margin-top:6px; padding-top:8px; border-top:1px dashed #cbd5e1;">
+                          <p class="popup-label" style="margin:0;">Atos de Terceiros (Opcional):</p>
+                          <div style="display:flex; gap:6px;">
+                            <input type="text" id="input-terceiro-desc-${context}" class="topic-select" placeholder="Ex: Perito, Leiloeiro..." style="flex:1;">
+                            <button class="chip-btn" onclick="confirmarTerceiro('${context}', event)" style="width:auto; padding:0 12px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">✔ Salvar</button>
+                          </div>
+                        </div>`
         };
 
         let htmlBotoes = '';
         
-        // 2. Mapeamento Lógico Baseado em Metadados
-        if (conf && conf.isHibrido) {
+        // LÓGICA BLINDADA:
+        // Se for um recurso da Fase 1 E for de execução (Agravo/Contraminuta)
+        if (conf && conf.isExecucao && conf.fase === 1) {
+            htmlBotoes += `${botoesDef.exequente}${botoesDef.executada}`;
+        } 
+        // Lógicas antigas mantidas para segurança
+        else if (conf && conf.isHibrido) {
             htmlBotoes += `${botoesDef.autora}${botoesDef.re}${botoesDef.exequente}${botoesDef.executada}${botoesDef.juizo}`;
         } else if (conf && conf.isExecucao) {
             htmlBotoes += `${botoesDef.exequente}${botoesDef.executada}${botoesDef.juizo}${botoesDef.auxiliar}`;
@@ -198,11 +417,13 @@ function selecionarDocumento(docLabel, polo, context) {
             htmlBotoes += `${botoesDef.autora}${botoesDef.re}`;
         }
 
-        // 3. Renderização Consistente do Botão Voltar
+        // 3. INJEÇÃO DO TERCEIRO (Sempre no final das opções principais)
+        htmlBotoes += botoesDef.terceiro;
+
         if (context === 'popup') {
-            htmlBotoes += `<button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('popup', event)">← Voltar</button>`;
+            htmlBotoes += `<button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('popup', event)" style="margin-top: 8px;">← Voltar</button>`;
         } else {
-            htmlBotoes += `<div class="wizard-actions" style="margin-top: 0;"><button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('wizard', event)">← Voltar</button></div>`;
+            htmlBotoes += `<div class="wizard-actions" style="margin-top: 8px;"><button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('wizard', event)">← Voltar</button></div>`;
         }
 
         document.getElementById(targetContainer).innerHTML = htmlBotoes;
@@ -260,12 +481,7 @@ function iniciarRecorteWizard() {
         return;
     }
 
-    const select = document.getElementById('crop-topic-select');
-    select.innerHTML = '<option value="">Selecione o Tópico...</option>';
-    topicos.forEach(t => select.appendChild(new Option(t.nome, t.id)));
-
-    // Memória inteligente: pré-seleciona o último tópico utilizado
-    if (_ultimoTopicoUsadoId) select.value = _ultimoTopicoUsadoId;
+    DropdownManager.renderizar('crop-topic-select', topicos, _ultimoTopicoUsadoId);
 
     document.getElementById('wizard-backdrop').style.display  = 'block';
     document.getElementById('crop-wizard-step1').style.display = 'flex';
@@ -444,13 +660,7 @@ function exibirPopupClassificacao(tipo, conteudo) {
     pendingTipo = tipo;
     pendingConteudo = conteudo;
 
-    const select = document.getElementById('seletor-topico');
-    select.innerHTML = '<option value="">Selecione o Tópico...</option>';
-    topicos.forEach(t => {
-        const opt = new Option(t.nome, t.id);
-        opt.dataset.cor = t.cor;
-        select.appendChild(opt);
-    });
+    DropdownManager.renderizar('seletor-topico', topicos);
 
     document.getElementById('agrupamento-popup-box').style.display = 'none';
     document.querySelector('input[name="modo_agrupar_popup"][value="nova"]').checked = true;
@@ -570,16 +780,8 @@ overlay.addEventListener('mousedown', function (e) {
         document.body.classList.remove('modo-extrator-ativo');
         overlay.style.display = 'none';
 
-        const select = document.getElementById('extrator-topic-select');
-        select.innerHTML = '';
-        
-        // Memória inteligente para acelerar o processo (usa o tópico ativo se houver)
         const activeTabId = (typeof TopicsManager !== 'undefined') ? TopicsManager.getActiveTabId() : null;
-        topicos.forEach(t => {
-            const opt = new Option(t.nome, t.id);
-            if (t.id === activeTabId) opt.selected = true;
-            select.appendChild(opt);
-        });
+        DropdownManager.renderizar('extrator-topic-select', topicos, activeTabId);
         
         document.getElementById('extrator-modal-backdrop').style.display = 'block';
         document.getElementById('extrator-wizard-popup').style.display = 'flex';
@@ -818,13 +1020,33 @@ window.abrirModalGeradorContexto = async function() {
 
             for (const [docTipo, limites] of Object.entries(agrupados)) {
                 if (limites.inicio && limites.fim) {
-                    const textoBruto = await window.PdfEngine.extrairTextoPorRegiao(limites.inicio, limites.fim);
-                    const textoLimpo = window.JurisUtils.limparTextoPDF(textoBruto);
-                    
+                    const pInicio = Math.min(limites.inicio.pagina, limites.fim.pagina);
+                    const pFim = Math.max(limites.inicio.pagina, limites.fim.pagina);
+                    const amostrasMap = new Map();
+
+                    // EXTRAÇÃO COM COLETA DE AMOSTRAGEM (necessária para a camada automática de ruído)
+                    const textoBruto = await window.PdfEngine.extrairTextoPorRegiao(
+                        limites.inicio,
+                        limites.fim,
+                        null, // onProgress — não usado neste fluxo
+                        (pageNum, rawText) => {
+                            if (pageNum === pInicio + 1 || pageNum === pInicio + 2 || pageNum === pFim - 1) {
+                                amostrasMap.set(pageNum, rawText);
+                            }
+                        }
+                    );
+
+                    let textoLimpo = window.JurisUtils.limparTextoPDF(textoBruto);
+
+                    // DELEGAÇÃO INTEGRAL DA SANITIZAÇÃO (mesma função usada na exportação TXT)
+                    if (typeof window.ExportManager?.aplicarFiltrosAvancados === 'function') {
+                        textoLimpo = window.ExportManager.aplicarFiltrosAvancados(textoLimpo, docTipo, amostrasMap, pInicio, pFim);
+                    }
+
                     // GERAÇÃO DE XML PROFUNDO PARA A IA
                     const tagName = docTipo.toUpperCase();
                     const xml = `\n<${tagName}>\n${textoLimpo}\n</${tagName}>\n`;
-                    
+
                     if (docTipo === 'sentenca') sentencaXML += xml;
                     else recursoXML += xml;
                 }
@@ -899,7 +1121,10 @@ window.gerarECopiarContexto = function(modo = 'pro') {
 
     const btnId = modo === 'interno' ? 'btn-copiar-contexto-interno' : 'btn-copiar-contexto-pro';
     const btn = document.getElementById(btnId);
-    const originalText = btn.innerHTML; // Preserva a estrutura do <span>
+    
+    // CORREÇÃO: Mutação Atômica - Apenas UMA declaração de originalText
+    const targetTextNode = btn.querySelector('.btn-main-text');
+    const originalText = targetTextNode.innerText;
     
     let outputFinal = "";
     
@@ -934,17 +1159,17 @@ window.gerarECopiarContexto = function(modo = 'pro') {
         }
     }
 
-    // Feedback Visual Progressivo
-    btn.innerHTML = "<span style='font-weight: bold;'>⏳ Copiando...</span>";
+    // Feedback Visual Progressivo (Atualizado sem quebrar o layout)
+    targetTextNode.innerText = '⏳ Copiando...';
     btn.style.opacity = "0.8";
 
     if (!navigator.clipboard) {
-        executarCopiaFallback(outputFinal, btn, originalText, modo);
+        executarCopiaFallback(outputFinal, btn, targetTextNode, originalText, modo);
         return;
     }
 
     navigator.clipboard.writeText(outputFinal).then(() => {
-        btn.innerHTML = "<span style='font-weight: bold;'>✅ Sucesso!</span>";
+        targetTextNode.innerText = '✅ Sucesso!';
         btn.style.backgroundColor = "#2e7d32"; 
         btn.style.opacity = "1";
         
@@ -952,26 +1177,27 @@ window.gerarECopiarContexto = function(modo = 'pro') {
         exibirToast(msgToast, 'sucesso');
         
         setTimeout(() => {
-            btn.innerHTML = originalText;
+            targetTextNode.innerText = originalText;
             btn.style.backgroundColor = modo === 'interno' ? '#f57c00' : 'var(--trt-blue)';
-            fecharModalGeradorContexto();
-        }, 1500); // 1.5s para o usuário ler o sucesso
+            // Usando window para garantir escopo global caso tenha sido perdido
+            if(typeof window.fecharModalGeradorContexto === 'function') window.fecharModalGeradorContexto();
+        }, 1500); 
         
     }).catch(err => {
         console.error('Falha na Clipboard API:', err);
-        executarCopiaFallback(outputFinal, btn, originalText, modo);
+        executarCopiaFallback(outputFinal, btn, targetTextNode, originalText, modo);
     });
 };
 
-function executarCopiaFallback(texto, btn, originalText, modo) {
-    btn.innerHTML = "<span style='font-weight: bold;'>⚠️ Falha ao Copiar</span>";
+function executarCopiaFallback(texto, btn, targetTextNode, originalText, modo) {
+    targetTextNode.innerText = '⚠️ Falhou';
     btn.style.backgroundColor = "#d32f2f";
     btn.style.opacity = "1";
     exibirToast('Permissão negada. Copie manualmente (Ctrl+A, Ctrl+C).', 'erro');
     
     // Retorna visual do botão após 3s, mas NÃO fecha o modal
     setTimeout(() => {
-        btn.innerHTML = originalText;
+        targetTextNode.innerText = originalText;
         btn.style.backgroundColor = modo === 'interno' ? '#f57c00' : 'var(--trt-blue)';
     }, 3000);
 }
@@ -996,9 +1222,13 @@ document.addEventListener('mouseover', (e) => {
     const docTipo = pin.dataset.tooltipDoc;
     const topicoNome = pin.dataset.tooltipTopico;
 
-    // Dicionário visual
+    // Dicionário visual atualizado para o balão do alfinete
     const docNomes = { 
-        sentenca: "Sentença / Acórdão", 
+        sentenca: "Sentença / Decisão", 
+        agravo_peticao_exequente: "Agravo de Petição (Exequente)",
+        agravo_peticao_executada: "Agravo de Petição (Executada)",
+        agravo_peticao_terceiro: "Agravo de Petição (Terceiro)",
+        contraminuta_agravo: "Contraminuta (ao Agravo)",
         recurso_autora: "Recurso (Autora)", 
         recurso_re: "Recurso (Ré)", 
         contrarrazões_autora: "Contrarrazões (Autora)", 
@@ -1060,3 +1290,18 @@ document.addEventListener('mouseout', (e) => {
         _cachedTooltip.style.display = 'none'; 
     }, 200);
 });
+
+/* ================================================
+   FUNÇÃO DE APOIO: POLO DE TERCEIROS
+   ================================================ */
+window.confirmarTerceiro = function(context, event) {
+    if(event) event.stopPropagation();
+    
+    const inputEl = document.getElementById(`input-terceiro-desc-${context}`);
+    let desc = inputEl ? inputEl.value.trim() : '';
+    
+    const poloFinal = desc ? `Terceiro (${desc})` : 'Terceiro';
+    
+    // Chama a sua função original de salvar
+    confirmarPolo(poloFinal, event);
+};

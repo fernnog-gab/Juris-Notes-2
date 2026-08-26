@@ -34,6 +34,32 @@ window.ExportManager = (function () {
     'use strict';
 
     let _deps = {};
+    let _regrasDeLimpezaCache = null;
+
+    // SINGLE SOURCE OF TRUTH — marcadores de sanitização (LGPD)
+    // Únicos em todo o módulo; nenhuma outra função deve redeclarar estas strings.
+    const MARCADOR_OFICIAL_LGPD = '\n\n[AVISO DE SISTEMA: Dados sensíveis (ex: endereços) ou estruturais (cabeçalhos) foram ocultados pela Borracha Mágica para adequação à LGPD.]\n\n';
+    const MARCADOR_RUIDOS = '\n\n[AVISO DE SISTEMA: Dados estruturais ocultados.]\n\n';
+
+    function _obterChaveStorageFiltro() {
+        const tagDom = document.getElementById('tag-numero-processo');
+        const numProcesso = tagDom && tagDom.textContent.trim() ? tagDom.textContent.trim() : 'padrao';
+        return `juris_filtros_${numProcesso}`;
+    }
+
+    function _carregarRegrasFiltro() {
+        if (_regrasDeLimpezaCache) return _regrasDeLimpezaCache;
+        try {
+            const salvo = sessionStorage.getItem(_obterChaveStorageFiltro());
+            _regrasDeLimpezaCache = salvo ? JSON.parse(salvo) : {};
+        } catch { _regrasDeLimpezaCache = {}; }
+        return _regrasDeLimpezaCache;
+    }
+
+    function _salvarRegrasFiltro() {
+        if (!_regrasDeLimpezaCache) return;
+        sessionStorage.setItem(_obterChaveStorageFiltro(), JSON.stringify(_regrasDeLimpezaCache));
+    }
 
     // ─── INICIALIZAÇÃO ────────────────────────────────────────────────────────
 
@@ -178,11 +204,15 @@ window.ExportManager = (function () {
             return docs;
         });
 
-        const palavrasChaveExecucao = [
-            'Agravo de Petição', 'Contraminuta', 'Sentença de Execução', 
-            'Embargos à Execução', 'Título Executivo', 'Cálculos', 
-            'Liquidação', 'Penhora', 'Bacenjud', 'Sisbajud', 'Impugnação aos Cálculos'
-        ];
+        // 1. Termos internos fixos (não selecionáveis na UI, mas que podem constar em nomes de documentos legados)
+        const termosBase = ['Sentença de Execução', 'Cálculos', 'Liquidação', 'Penhora', 'Bacenjud', 'Sisbajud', 'Impugnação aos Cálculos'];
+        
+        // 2. Extrai dinamicamente as labels da UI marcadas como Execução
+        const labelsExecucaoUI = window.DOC_CONFIG ? 
+            window.DOC_CONFIG.filter(d => d.isExecucao).map(d => d.label) : [];
+
+        // 3. União dos arrays (Fallback + Dinâmico)
+        const palavrasChaveExecucao = [...termosBase, ...labelsExecucaoUI];
 
         return {
             isExecucao: todosDocumentos.some(doc => palavrasChaveExecucao.some(palavra => doc.includes(palavra))),
@@ -436,7 +466,33 @@ window.ExportManager = (function () {
             mdDiretrizesGlobais += `</diretrizes_globais_do_topico>\n\n`;
         }
 
-        return mdCabecalho + mdTags + mdVeredito + mdDiretrizesGlobais + mdDiretrizesTeses + mdMatriz;
+        // INTEGRAÇÃO DE AUDITORIA DE PRESCRIÇÃO
+        const dadosContrato = window.ContratoManager ? window.ContratoManager.getDados() : null;
+        let mdContrato = '';
+        if (dadosContrato && (dadosContrato.inicio || dadosContrato.fim)) {
+            const formatarData = (d) => d ? d.split('-').reverse().join('/') : 'Não informado';
+            const temAjuizamento = !!dadosContrato.ajuizamento;
+
+            mdContrato += `<parametros_contratuais>\n`;
+            mdContrato += `[ALERTA DE SISTEMA - MARCO PRESCRICIONAL]:\n`;
+            mdContrato += `O Assessor definiu os seguintes parâmetros incontroversos de vínculo:\n`;
+            mdContrato += `- Início do contrato: ${formatarData(dadosContrato.inicio)}\n`;
+            mdContrato += `- Término do contrato: ${formatarData(dadosContrato.fim)}\n`;
+            mdContrato += `- Data de ajuizamento da ação: ${formatarData(dadosContrato.ajuizamento)}\n`;
+            mdContrato += `- Função(ões): ${_safeMD(dadosContrato.funcao || 'Não informada', ' ')}\n\n`;
+
+            mdContrato += `INSTRUÇÃO ESTRITA: Durante a análise do mérito e das parcelas deferidas, avalie a prescrição:\n`;
+            mdContrato += `- PRESCRIÇÃO BIENAL: verifique se a "Data de ajuizamento" está a mais de 2 anos do "Término do contrato". Se estiver, TODO o direito de ação está prescrito.\n`;
+            if (temAjuizamento) {
+                mdContrato += `- PRESCRIÇÃO QUINQUENAL: são inexigíveis parcelas vencidas há mais de 5 anos contados retroativamente da "Data de ajuizamento" informada acima.\n`;
+            } else {
+                mdContrato += `- PRESCRIÇÃO QUINQUENAL: a "Data de ajuizamento" não foi informada — NÃO calcule o marco quinquenal; apenas sinalize [DADO INSUFICIENTE PARA PRESCRIÇÃO QUINQUENAL] caso essa análise seja relevante ao tópico.\n`;
+            }
+            mdContrato += `Se identificar parcela deferida fora de qualquer um destes limites, emita um destaque explícito [ERRO PRESCRICIONAL IDENTIFICADO], explicando o motivo.\n`;
+            mdContrato += `</parametros_contratuais>\n\n`;
+        }
+
+        return mdCabecalho + mdTags + mdContrato + mdVeredito + mdDiretrizesGlobais + mdDiretrizesTeses + mdMatriz;
     }
 
     // ─── DOWNLOAD DE ARQUIVO MARKDOWN ─────────────────────────────────────────
@@ -604,9 +660,17 @@ window.ExportManager = (function () {
             }, {});
 
             const docNomes = {
-                sentenca: "Sentença / Acórdão", recurso_autora: "Recurso (Autora)", recurso_re: "Recurso (Ré)",
-                contrarrazões_autora: "Contrarrazões (Autora)", contrarrazões_re: "Contrarrazões (Ré)",
-                inicial: "Petição Inicial", contestacao: "Contestação"
+                sentenca: "Sentença / Decisão", 
+                agravo_peticao_exequente: "Agravo de Petição (Exequente)",
+                agravo_peticao_executada: "Agravo de Petição (Executada)",
+                agravo_peticao_terceiro: "Agravo de Petição (Terceiro)",
+                contraminuta_agravo: "Contraminuta (ao Agravo)",
+                recurso_autora: "Recurso (Autora)", 
+                recurso_re: "Recurso (Ré)",
+                contrarrazões_autora: "Contrarrazões (Autora)", 
+                contrarrazões_re: "Contrarrazões (Ré)",
+                inicial: "Petição Inicial", 
+                contestacao: "Contestação"
             };
 
             const svgPin = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11.78L20.24 16H13v6l-1 2-1-2v-6H3.76L8 11.78V4h1V2h6v2h1v7.78z"></path></svg>`;
@@ -620,6 +684,12 @@ window.ExportManager = (function () {
                 if (isCompleto) _documentosParaExtracaoCache[docTipo] = limites;
                 
                 const nomeF = docNomes[docTipo] || docTipo.toUpperCase();
+                
+                const regras = _carregarRegrasFiltro();
+                const hasRegra = !!regras[docTipo];
+                
+                const svgEraser = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`;
+                const btnBorracha = `<button type="button" class="pin-eraser-btn trigger-borracha ${hasRegra ? 'is-active' : ''}" data-doc-tipo="${docTipo}" data-doc-nome="${_escapeXmlAttr(nomeF)}" title="Borracha Mágica">${svgEraser}</button>`;
                 
                 // Renderização dos botões de ação isolados (com preventDefault para não engatilhar o checkbox)
                 const btnInicio = hasInicio 
@@ -642,6 +712,7 @@ window.ExportManager = (function () {
                             <span class="export-option-subtitle">${statusTexto}</span>
                         </div>
                         <div class="export-pin-controls">
+                            ${btnBorracha}
                             ${btnInicio}
                             ${btnFim}
                         </div>
@@ -652,6 +723,16 @@ window.ExportManager = (function () {
 
         // Injeção Única no DOM (Alta Performance)
         container.innerHTML = htmlBuffer.join('');
+
+        container.addEventListener('click', function(e) {
+            const btnBorrachaTarget = e.target.closest('.trigger-borracha');
+            if (btnBorrachaTarget) {
+                e.preventDefault();
+                const docTipo = btnBorrachaTarget.getAttribute('data-doc-tipo');
+                const docNome = btnBorrachaTarget.getAttribute('data-doc-nome');
+                abrirModalFiltro(docTipo, docNome);
+            }
+        });
 
         document.getElementById('export-avancado-backdrop').style.display = 'block';
         document.getElementById('modal-exportacao-avancada').style.display = 'block';
@@ -679,6 +760,62 @@ window.ExportManager = (function () {
     function fecharPainelExportacao() {
         document.getElementById('export-avancado-backdrop').style.display = 'none';
         document.getElementById('modal-exportacao-avancada').style.display = 'none';
+    }
+
+    function abrirModalFiltro(docTipo, nomeDocAmigavel) {
+        const regras = _carregarRegrasFiltro();
+        document.getElementById('hidden-doc-tipo-filtro').value = docTipo;
+        document.getElementById('label-doc-filtro').textContent = nomeDocAmigavel;
+        document.getElementById('textarea-filtro-repeticao').value = regras[docTipo] || '';
+        validarTamanhoFiltro();
+        
+        document.getElementById('filtro-repeticao-backdrop').style.display = 'block';
+        document.getElementById('modal-filtro-repeticao').style.display = 'block';
+    }
+
+    function fecharModalFiltro() {
+        document.getElementById('filtro-repeticao-backdrop').style.display = 'none';
+        document.getElementById('modal-filtro-repeticao').style.display = 'none';
+    }
+
+    function validarTamanhoFiltro() {
+        const texto = document.getElementById('textarea-filtro-repeticao').value.trim();
+        const btnSalvar = document.getElementById('btn-salvar-filtro');
+        const aviso = document.getElementById('aviso-tamanho-filtro');
+        
+        if (texto.length > 0 && texto.length < 30) {
+            btnSalvar.disabled = true;
+            btnSalvar.style.opacity = '0.5';
+            aviso.style.display = 'block';
+        } else {
+            btnSalvar.disabled = false;
+            btnSalvar.style.opacity = '1';
+            aviso.style.display = 'none';
+        }
+    }
+
+    function salvarFiltro() {
+        const docTipo = document.getElementById('hidden-doc-tipo-filtro').value;
+        const texto = document.getElementById('textarea-filtro-repeticao').value.trim();
+        const regras = _carregarRegrasFiltro();
+        
+        if (texto.length >= 30) {
+            regras[docTipo] = texto;
+            _salvarRegrasFiltro();
+            _deps.exibirToast('Regra de limpeza salva para esta peça!', 'sucesso');
+        } else if (texto.length === 0) {
+            delete regras[docTipo];
+            _salvarRegrasFiltro();
+            _deps.exibirToast('Regra desativada.', 'info');
+        }
+        
+        fecharModalFiltro();
+        abrirPainelExportacao();
+    }
+
+    function limparFiltro() {
+        document.getElementById('textarea-filtro-repeticao').value = '';
+        salvarFiltro();
     }
 
     async function gerarExportacaoPersonalizada() {
@@ -726,18 +863,30 @@ window.ExportManager = (function () {
                     const tagName = docTipo.toUpperCase();
                     
                     try {
+                        const pInicio = Math.min(limites.inicio.pagina, limites.fim.pagina);
+                        const pFim = Math.max(limites.inicio.pagina, limites.fim.pagina);
+                        const amostrasMap = new Map();
+
                         const textoBruto = await window.PdfEngine.extrairTextoPorRegiao(
                             limites.inicio, 
                             limites.fim,
-                            // Progress Tracking interpolado pelo orquestrador
                             (atual, totalPagsDoc) => {
                                 const docNumber = idx + 1;
                                 _deps.exibirToast(`⏳ Processando Peça ${docNumber}/${checkboxesDocsExtra.length} (Pág ${atual} de ${totalPagsDoc})...`, 'info');
+                            },
+                            (pageNum, rawText) => {
+                                if (pageNum === pInicio + 1 || pageNum === pInicio + 2 || pageNum === pFim - 1) {
+                                    amostrasMap.set(pageNum, rawText);
+                                }
                             }
                         );
                         
-                        const textoLimpo = (window.JurisUtils && window.JurisUtils.limparTextoPDF) 
+                        let textoLimpo = (window.JurisUtils && window.JurisUtils.limparTextoPDF) 
                             ? window.JurisUtils.limparTextoPDF(textoBruto) : textoBruto;
+
+                        // SANITIZAÇÃO DELEGADA — fonte única, compartilhada com o Gerador de Contexto IA
+                        textoLimpo = aplicarFiltrosAvancados(textoLimpo, docTipo, amostrasMap, pInicio, pFim);
+
                         conteudoFinal += `<${tagName}>\n${textoLimpo}\n</${tagName}>\n\n`;
                         
                     } catch (extraError) {
@@ -795,6 +944,66 @@ window.ExportManager = (function () {
         }
     }
 
-    return { init, exportarTopicoAtivo, obterDadosDoTopicoAtivo, abrirPainelExportacao, fecharPainelExportacao, gerarExportacaoPersonalizada };
+    /**
+     * Aplica as duas camadas de sanitização (LGPD) sobre um texto extraído do PDF:
+     *   1. Automática — remove ruído estrutural repetido entre páginas (cabeçalhos/rodapés),
+     *      detectado por comparação de amostras (descobrirRuidosEstruturais).
+     *   2. Manual — aplica a regra fuzzy cadastrada pelo usuário na Borracha Mágica.
+     *
+     * Esta é a ÚNICA implementação dessa regra de negócio no sistema. Tanto a exportação
+     * em TXT quanto o Gerador de Contexto para IA devem chamar esta função — nunca replicar
+     * a lógica localmente — garantindo paridade absoluta entre os dois fluxos.
+     *
+     * @param {string} textoLimpo Texto já normalizado por JurisUtils.limparTextoPDF.
+     * @param {string} docTipo Identificador do documento (ex: 'sentenca', 'recurso_autora').
+     * @param {Map<number,string>|null} amostrasMap Amostras de páginas cruas, coletadas via
+     *        o callback onPageRawText de PdfEngine.extrairTextoPorRegiao. Pode ser null/vazio
+     *        se o chamador não tiver capturado amostras (a camada automática é então ignorada).
+     * @param {number} pInicio Número da primeira página do documento.
+     * @param {number} pFim Número da última página do documento.
+     * @returns {string} Texto sanitizado.
+     */
+    function aplicarFiltrosAvancados(textoLimpo, docTipo, amostrasMap, pInicio, pFim) {
+        let textoProcessado = textoLimpo;
+
+        // 1. CAMADA AUTOMÁTICA (Ruído Estrutural)
+        if (window.JurisUtils && window.JurisUtils.descobrirRuidosEstruturais && amostrasMap && amostrasMap.size > 0) {
+            let textoA = amostrasMap.get(pInicio + 1) || "";
+            let textoB = amostrasMap.get(pInicio + 2) || amostrasMap.get(pFim - 1) || "";
+
+            if (textoA && textoB) {
+                textoA = window.JurisUtils.limparTextoPDF(textoA);
+                textoB = window.JurisUtils.limparTextoPDF(textoB);
+                const esqueletosAutonomos = window.JurisUtils.descobrirRuidosEstruturais(textoA, textoB);
+
+                esqueletosAutonomos.forEach(esqueleto => {
+                    textoProcessado = window.JurisUtils.removerTrechoFuzzy(textoProcessado, esqueleto, MARCADOR_RUIDOS, true);
+                });
+            }
+        }
+
+        // 2. CAMADA MANUAL (Regras da Borracha Mágica — LGPD)
+        const regras = _carregarRegrasFiltro();
+        if (regras[docTipo] && window.JurisUtils && window.JurisUtils.removerTrechoFuzzy) {
+            textoProcessado = window.JurisUtils.removerTrechoFuzzy(textoProcessado, regras[docTipo], MARCADOR_OFICIAL_LGPD, false);
+        }
+
+        return textoProcessado;
+    }
+
+    return { 
+        init, 
+        exportarTopicoAtivo, 
+        obterDadosDoTopicoAtivo, 
+        abrirPainelExportacao, 
+        fecharPainelExportacao, 
+        gerarExportacaoPersonalizada,
+        abrirModalFiltro,
+        fecharModalFiltro,
+        validarTamanhoFiltro,
+        salvarFiltro,
+        limparFiltro,
+        aplicarFiltrosAvancados
+    };
 
 })();
