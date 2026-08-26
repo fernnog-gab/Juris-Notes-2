@@ -476,15 +476,6 @@
         <hr style="width: 100%; border: 0; border-top: 1px solid #eee; margin: 4px 0;">
 
         <!-- OPÇÕES: Movimentação (Mantidas, sem o título) -->
-        <button class="ann-action-btn" style="justify-content: flex-start; gap: 8px; width: 100%;" title="Agrupar Nó" onclick="criarPilhaDeIdeias()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px; height:16px;">
-                <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <path d="M2 15h10"></path>
-                <path d="M2 9h10"></path>
-            </svg>
-            <span style="font-size: 0.8rem;">Criar Pilha (Agrupar)</span>
-        </button>
         <button class="ann-action-btn" style="justify-content: flex-start; gap: 8px; width: 100%;" title="Mover Posição" onclick="acionarReordenarSub()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><polyline points="8 7 12 3 16 7"></polyline><line x1="12" y1="12" x2="12" y2="3"></line></svg>
             <span style="font-size: 0.8rem;">Reordenar Posição</span>
@@ -511,29 +502,26 @@
     <div id="toast-feedback" class="toast-feedback"></div>
     
     <!-- Modal Nativo de Tarefas -->
-    <div id="tarefas-modal-backdrop" class="backdrop-seguro" style="display: none;" onclick="TaskManager.fecharModal()"></div>
+    <div id="tarefas-modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(2px); z-index: 4004;" onclick="TaskManager.fecharModal()"></div>
 
-    <div id="modal-tarefas" class="crop-wizard-popup modal-tarefas-amplo fechavel-por-esc" style="display:none;">
-        <div class="wizard-header wizard-header--flex">
-            <span class="wizard-header__title">
+    <div id="modal-tarefas" class="crop-wizard-popup fechavel-por-esc" style="display:none; z-index: 4005; min-width: 450px; max-width: 600px; max-height: 85vh; flex-direction: column;">
+        <div class="wizard-header" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+            <span style="display: flex; align-items: center; gap: 8px;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
                 Gerenciador de Tarefas
             </span>
-            <button class="wizard-header__close-btn" onclick="TaskManager.fecharModal()">✕</button>
+            <button style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #64748b;" onclick="TaskManager.fecharModal()">✕</button>
         </div>
         
-        <!-- Contêiner centralizado para ergonomia de leitura -->
-        <div class="tarefas-container-interno">
-            <!-- Blindagem Flexbox + Scroll Indicator nativo -->
-            <div class="doc-list-container scroll-indicator-container native-obs-list-amplo" id="native-obs-list">
-                <!-- Tarefas dinâmicas -->
-            </div>
-            
-            <div class="tarefas-actions-footer">
-                <button class="chip-btn chip-autora btn-adicionar-tarefa" onclick="TaskManager.adicionarTarefa()">
-                    + Adicionar Nova Tarefa
-                </button>
-            </div>
+        <!-- Blindagem Flexbox: min-height: 0 força o overflow correto -->
+        <div class="doc-list-container scroll-indicator-container" id="native-obs-list" style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px; margin-top: 12px; background: #f8fafc; border: 1px solid var(--border-color);">
+            <!-- Tarefas dinâmicas -->
+        </div>
+        
+        <div style="flex-shrink: 0; margin-top: 12px;">
+            <button class="chip-btn chip-autora" style="width: 100%; border: 1px dashed var(--trt-blue); background: transparent; color: var(--trt-blue);" onclick="TaskManager.adicionarTarefa()">
+                + Adicionar Nova Tarefa
+            </button>
         </div>
     </div>
 
@@ -1210,32 +1198,6 @@
         <iframe id="balanca-iframe" style="flex: 1; border: none; width: 100%; display: block; background: var(--bg-page);" sandbox="allow-same-origin allow-scripts allow-forms allow-modals"></iframe>
     </div>
 
-    <!-- BACKDROP E MODAL: EDITAR PILHA (GRUPO DE IDEIAS) -->
-    <div id="pilha-modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.40); z-index: 4004;" onclick="TopicsManager.fecharModalPilha()"></div>
-
-    <div id="modal-editar-pilha" class="crop-wizard-popup" style="display:none; z-index: 4005; max-width: 450px; width: 90%;">
-        <div class="wizard-header">📚 Personalizar Grupo de Ideias</div>
-        
-        <p class="popup-label">Título do Grupo:</p>
-        <input type="text" id="input-pilha-titulo" class="topic-select" placeholder="Ex: Contradições da Testemunha">
-        
-        <!-- Novo Header Flex para acomodar o botão de Reset -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; margin-bottom: 4px;">
-            <p class="popup-label" style="margin: 0;">Teor das Ideias (Resumo):</p>
-            <button class="chip-btn" style="background: none; border: 1px dashed #cbd5e1; color: #64748b; padding: 2px 8px; font-size: 0.7rem; cursor: pointer;" onclick="document.getElementById('input-pilha-descricao').value = '';" title="Apaga a edição manual e volta para a concatenação automática do sistema.">
-                🔄 Usar Automático
-            </button>
-        </div>
-        
-        <p style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 6px;">Deixe vazio para o sistema extrair os textos automaticamente.</p>
-        <textarea id="input-pilha-descricao" class="popup-textarea" style="display:block; min-height: 80px; width: 100%; box-sizing: border-box;" rows="3"></textarea>
-        
-        <div class="wizard-actions" style="margin-top: 16px;">
-            <button class="chip-btn chip-cancelar" onclick="TopicsManager.fecharModalPilha()">✕ Cancelar</button>
-            <button class="chip-btn chip-autora" style="background: #FFC107; color: #000; border-color: #E5C100;" onclick="TopicsManager.salvarEdicaoPilha()">✔ Salvar Grupo</button>
-        </div>
-    </div>
-
     <!-- MODAIS DO CONTRATO DE TRABALHO -->
     <div id="modal-contrato-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.40); z-index: 4004;" onclick="ContratoManager.fecharModal()"></div>
     <div id="modal-contrato-config" class="crop-wizard-popup" style="display:none; z-index: 4005; min-width: 340px;">
@@ -1485,24 +1447,14 @@ Crie um sumário hierárquico enxuto com as Grandes Categorias e Subcategorias q
             <div>
                 <p class="popup-label">Peça Processual:</p>
                 <select id="extrator-doc-select" class="topic-select">
-    <optgroup label="Decisões">
-        <option value="sentenca">Sentença / Acórdão / Decisão</option>
-    </optgroup>
-    <optgroup label="Fase de Execução">
-        <option value="agravo_peticao_exequente">Agravo de Petição (Exequente)</option>
-        <option value="agravo_peticao_executada">Agravo de Petição (Executada)</option>
-        <option value="agravo_peticao_terceiro">Agravo de Petição (Terceiro Interessado)</option>
-        <option value="contraminuta_agravo">Contraminuta (ao Agravo de Petição)</option>
-    </optgroup>
-    <optgroup label="Fase de Conhecimento">
-        <option value="recurso_autora">Recurso Ordinário (Autora)</option>
-        <option value="recurso_re">Recurso Ordinário (Ré)</option>
-        <option value="contrarrazões_autora">Contrarrazões (Autora)</option>
-        <option value="contrarrazões_re">Contrarrazões (Ré)</option>
-        <option value="inicial">Petição Inicial</option>
-        <option value="contestacao">Contestação</option>
-    </optgroup>
-</select>
+                    <option value="sentenca">Sentença / Acórdão</option>
+                    <option value="recurso_autora">Recurso Ordinário (Autora)</option>
+                    <option value="recurso_re">Recurso Ordinário (Ré)</option>
+                    <option value="contrarrazões_autora">Contrarrazões (Autora)</option>
+                    <option value="contrarrazões_re">Contrarrazões (Ré)</option>
+                    <option value="inicial">Petição Inicial</option>
+                    <option value="contestacao">Contestação</option>
+                </select>
             </div>
             <div>
                 <p class="popup-label">Este clique representa o:</p>
