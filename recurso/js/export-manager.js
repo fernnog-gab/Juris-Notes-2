@@ -259,10 +259,19 @@ window.ExportManager = (function () {
                     const diretrizesValidas = diretrizes.filter(dir => dir.intencao !== 'nota'); // BLINDAGEM: Remove notas ocultas da tese
                     
                     if (diretrizesValidas.length > 0) {
-                        // CORREÇÃO: Remoção de atributos XML. Nome da tese em texto livre.
-                        bufferTeses += `<tese_alvo>\n`;
-                        bufferTeses += `[NOME DA TESE]: ${_escapeXmlAttr(nomeTese)}\n`;
-                        diretrizesValidas.forEach(dir => {
+                const cardRef = topico.anotacoes.find(a => a.tese === nomeTese);
+                let perspectivaIA = "Análise Dialética Padrão";
+                if (cardRef && cardRef.teseClassificacao) {
+                    if (cardRef.teseClassificacao === 'autora') perspectivaIA = "Perspectiva de Redação: Favorecer a tese da Parte Autora";
+                    if (cardRef.teseClassificacao === 're') perspectivaIA = "Perspectiva de Redação: Favorecer a tese da Parte Ré";
+                    if (cardRef.teseClassificacao === 'juizo') perspectivaIA = "Perspectiva de Redação: Aderir irrestritamente à Diretriz imposta pelo Juízo de Origem";
+                }
+                
+                // CORREÇÃO: Remoção de atributos XML. Nome da tese em texto livre.
+                bufferTeses += `<tese_alvo>\n`;
+                bufferTeses += `[NOME DA TESE]: ${_escapeXmlAttr(nomeTese)}\n`;
+                bufferTeses += `[INSTRUÇÃO ESTRITA]: ${perspectivaIA}\n`;
+                diretrizesValidas.forEach(dir => {
                             bufferTeses += `[${(dir.intencao || 'DIRETRIZ').toUpperCase()}]: ${_safeMD(dir.texto, '\n')}\n`;
                         });
                         bufferTeses += `</tese_alvo>\n\n`;
