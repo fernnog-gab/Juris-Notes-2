@@ -389,7 +389,16 @@ function selecionarDocumento(docLabel, polo, context) {
             exequente: `<button class="chip-btn chip-exequente" onclick="confirmarPolo('Parte Exequente', event)">✔ Parte Exequente</button>`,
             executada: `<button class="chip-btn chip-executada" onclick="confirmarPolo('Parte Executada', event)">✔ Parte Executada</button>`,
             juizo:     `<button class="chip-btn chip-juizo" onclick="confirmarPolo('Juízo / Tribunal', event)">🏛️ Juízo / Tribunal</button>`,
-            auxiliar:  `<button class="chip-btn chip-auxiliar" onclick="confirmarPolo('Auxiliar da Justiça', event)">⚖️ Auxiliar da Justiça</button>`
+            auxiliar:  `<button class="chip-btn chip-auxiliar" onclick="confirmarPolo('Auxiliar da Justiça', event)">⚖️ Auxiliar da Justiça</button>`,
+            
+            // AQUI ENTRA O NOSSO BLOCO DO TERCEIRO
+            terceiro:  `<div style="display:flex; flex-direction:column; gap:6px; margin-top:6px; padding-top:8px; border-top:1px dashed #cbd5e1;">
+                          <p class="popup-label" style="margin:0;">Atos de Terceiros (Opcional):</p>
+                          <div style="display:flex; gap:6px;">
+                            <input type="text" id="input-terceiro-desc-${context}" class="topic-select" placeholder="Ex: Perito, Leiloeiro..." style="flex:1;">
+                            <button class="chip-btn" onclick="confirmarTerceiro('${context}', event)" style="width:auto; padding:0 12px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">✔ Salvar</button>
+                          </div>
+                        </div>`
         };
 
         let htmlBotoes = '';
@@ -408,10 +417,13 @@ function selecionarDocumento(docLabel, polo, context) {
             htmlBotoes += `${botoesDef.autora}${botoesDef.re}`;
         }
 
+        // 3. INJEÇÃO DO TERCEIRO (Sempre no final das opções principais)
+        htmlBotoes += botoesDef.terceiro;
+
         if (context === 'popup') {
-            htmlBotoes += `<button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('popup', event)">← Voltar</button>`;
+            htmlBotoes += `<button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('popup', event)" style="margin-top: 8px;">← Voltar</button>`;
         } else {
-            htmlBotoes += `<div class="wizard-actions" style="margin-top: 0;"><button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('wizard', event)">← Voltar</button></div>`;
+            htmlBotoes += `<div class="wizard-actions" style="margin-top: 8px;"><button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('wizard', event)">← Voltar</button></div>`;
         }
 
         document.getElementById(targetContainer).innerHTML = htmlBotoes;
@@ -1210,9 +1222,13 @@ document.addEventListener('mouseover', (e) => {
     const docTipo = pin.dataset.tooltipDoc;
     const topicoNome = pin.dataset.tooltipTopico;
 
-    // Dicionário visual
+    // Dicionário visual atualizado para o balão do alfinete
     const docNomes = { 
-        sentenca: "Sentença / Acórdão", 
+        sentenca: "Sentença / Decisão", 
+        agravo_peticao_exequente: "Agravo de Petição (Exequente)",
+        agravo_peticao_executada: "Agravo de Petição (Executada)",
+        agravo_peticao_terceiro: "Agravo de Petição (Terceiro)",
+        contraminuta_agravo: "Contraminuta (ao Agravo)",
         recurso_autora: "Recurso (Autora)", 
         recurso_re: "Recurso (Ré)", 
         contrarrazões_autora: "Contrarrazões (Autora)", 
@@ -1274,3 +1290,18 @@ document.addEventListener('mouseout', (e) => {
         _cachedTooltip.style.display = 'none'; 
     }, 200);
 });
+
+/* ================================================
+   FUNÇÃO DE APOIO: POLO DE TERCEIROS
+   ================================================ */
+window.confirmarTerceiro = function(context, event) {
+    if(event) event.stopPropagation();
+    
+    const inputEl = document.getElementById(`input-terceiro-desc-${context}`);
+    let desc = inputEl ? inputEl.value.trim() : '';
+    
+    const poloFinal = desc ? `Terceiro (${desc})` : 'Terceiro';
+    
+    // Chama a sua função original de salvar
+    confirmarPolo(poloFinal, event);
+};

@@ -5,6 +5,9 @@
 window.TopicsManager = (function () {
     'use strict';
 
+    const romanoCache = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV","XVI","XVII","XVIII","XIX","XX"];
+    function obterRomano(idx) { return romanoCache[idx] || String(idx + 1); }
+
     let _activeTopicoCor = '#ffffff';
 
     // Observer Otimizado (Debounce de ~16ms para agrupar Recalculate Styles)
@@ -219,6 +222,91 @@ window.TopicsManager = (function () {
                 </button>`;
     }
 
+    // --- FÁBRICA DE COMPONENTES: PILHA (GRUPO DE IDEIAS) ---
+    
+    /**
+     * Iterador Estrutural O(N): Varre todos os subnós de um tópico.
+     * Centraliza a lógica de busca do JSON previnindo nós órfãos.
+     */
+    function _percorrerTodosOsNos(topico, callback) {
+        if (!topico) return;
+        
+        const processar = (arr) => {
+            if (arr) arr.forEach(callback);
+        };
+
+        // 1. Ramos Principais e Correlacionados
+        if (topico.anotacoes) {
+            topico.anotacoes.forEach(an => {
+                processar(an.subAnotacoes);
+                if (an.itensCorrelacionados) {
+                    an.itensCorrelacionados.forEach(ic => processar(ic.subAnotacoes));
+                }
+            });
+        }
+        
+        // 2. Ramos Globais e de Tese (Correção do Ponto Cego)
+        processar(topico.diretrizesGlobais);
+        
+        if (topico.diretrizesPorTese) {
+            Object.values(topico.diretrizesPorTese).forEach(arr => processar(arr));
+        }
+    }
+
+    function _obterTextosDaPilha(topico, grupoId) {
+        if (!topico) return "";
+        let textos = [];
+        
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === grupoId && no.texto && no.texto.trim() !== '') {
+                textos.push(no.texto.trim());
+            }
+        });
+
+        return textos.join(' - ');
+    }
+
+    function _gerarHtmlPilha(sub, renderContext, activeTabId) {
+        // Gera/Resgata o numeral romano do contexto global da aba
+        if (!renderContext.romanMap.has(sub.grupoId)) {
+            renderContext.romanMap.set(sub.grupoId, obterRomano(renderContext.romanCounter++));
+        }
+        const numRomano = renderContext.romanMap.get(sub.grupoId);
+        
+        // Motor Computed:
+        const topico = topicos.find(t => t.id === activeTabId);
+        const teorAutomatico = _obterTextosDaPilha(topico, sub.grupoId);
+        
+        const tituloPilha = sub.grupoTitulo || "📚 Grupo de Ideias";
+        
+        // Fallback Inteligente: Se existir descrição manual, usa ela. Senão, usa o automático.
+        const descPilha = sub.grupoDescricao || (teorAutomatico !== "" ? teorAutomatico : "Nós vazios.");
+        const source = sub.viewSource || 'main';
+
+        return `
+        <div class="sub-annotation-item sub-stack-wrapper" data-source="${source}">
+            <div class="sub-annotation-card sub-annotation-stack tema-dossie">
+                <!-- A assinatura do onclick foi restaurada ao original para compatibilidade com o script do Modal -->
+                <!-- Adicionado data-grupo-id para tornar o HTML mais robusto para leituras futuras -->
+                <div class="stack-roman-badge" data-grupo-id="${sub.grupoId}" title="Desagrupar Pilha" onclick="TopicsManager.desagruparPilha('${activeTabId}', '${sub.grupoId}')">
+                    ${numRomano}
+                </div>
+                
+                <div class="pilha-editavel" title="Clique para editar metadados" onclick="TopicsManager.abrirModalPilha('${activeTabId}', '${sub.grupoId}')">
+                    ${escaparHTML(tituloPilha)}
+                </div>
+                
+                <div class="pilha-editavel pilha-editavel-desc" title="Clique para editar metadados" onclick="TopicsManager.abrirModalPilha('${activeTabId}', '${sub.grupoId}')">
+                    ${renderizarMarkdownSeguro(escaparHTML(descPilha)).replace(/\n/g, '<br>')}
+                </div>
+                
+                <div class="btn-read-mode-trigger sub-read-badge" title="Modo Leitura do Grupo" onclick="TopicsManager.abrirModoLeituraPilha('${activeTabId}', '${sub.grupoId}', '${numRomano}')">
+                    <svg><use href="#icon-book-open"></use></svg>
+                </div>
+            </div>
+        </div>`;
+    }
+
     let activeTabId = null;
 
     /**
@@ -327,6 +415,15 @@ window.TopicsManager = (function () {
         return item.pagina ? `(${idFormt}fl. ${item.pagina})` : '';
     }
 
+    /**
+     * Fábrica de Componente: Gera o HTML do meta-texto (ID/Folha) com interatividade.
+     * @param {boolean} isModalLeitura - Se true, encadeia o fechamento síncrono do modal antes de saltar para o PDF.
+     */
+    function _gerarMetaInterativo(topicoId, parentIndex, originalCIdx, metaTexto, isModalLeitura = false) {
+        const acaoFechamento = isModalLeitura ? 'TopicsManager.fecharModoLeitura(); ' : '';
+        return `<span class="card-meta" style="cursor:pointer; font-size:0.85rem; color:var(--trt-blue); font-weight:700; text-decoration: underline dashed; text-underline-offset: 3px;" title="Clique: Copiar | Shift+Clique: Editar folha | Ctrl+Clique: Ir ao PDF" onclick="${acaoFechamento}handleMetaClick(event, '${topicoId}', ${parentIndex}, true, ${originalCIdx})">${metaTexto}</span>`;
+    }
+
     // Função estática gerarSVGConector removida (substituída pelo motor dinâmico desenharConexoes)
 
     /**
@@ -335,7 +432,7 @@ window.TopicsManager = (function () {
      * Os três fragmentos são irmãos diretos no .timeline-container,
      * garantindo que align-self funcione corretamente nas sub-anotações.
      */
-    function criarCard(anotacao, index, arr) {
+    function criarCard(anotacao, index, arr, renderContext) {
         const total    = arr.length;
         const numero   = index + 1;
         const tagClass = poloParaClasse(anotacao.polo);
@@ -411,10 +508,16 @@ window.TopicsManager = (function () {
                 ? `<button title="Editar" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}${ctxCidx}}; ${acaoEditar}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>` 
                 : '';
             
+            const isElegivelParaPilha = isCorrelacionado && cIdx != null && !anotacao.itensCorrelacionados[cIdx].pilhaProcId;
+            const btnAgrupar = isElegivelParaPilha 
+                ? `<button title="Criar Pilha Processual" onclick="TopicsManager.abrirModalPilhaProcessual('${activeTabId}', ${index}, ${cIdx})">🗂️</button>` 
+                : '';
+
             const paramMove = isCorrelacionado ? `'${activeTabId}', ${index}, ${cIdx}` : `'${activeTabId}', ${index}, null`;
             
             return `
             <div class="card-actions-bar">
+                ${btnAgrupar}
                 ${btnLeitura}
                 ${btnEditar}
                 <button title="Adicionar Nó de Ideia" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}${ctxCidx}}; acionarNovoNoIdeia()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
@@ -436,91 +539,154 @@ window.TopicsManager = (function () {
         
         // 2. Achata os nós dos Filhos (Correlacionados)
         if (anotacao.itensCorrelacionados) {
+            // Reutiliza ou recria o Map para O(1)
+            const pilhaAnchorMapSub = new Map();
+            anotacao.itensCorrelacionados.forEach((ic, i) => {
+                if (ic.pilhaProcId && !pilhaAnchorMapSub.has(ic.pilhaProcId)) {
+                    pilhaAnchorMapSub.set(ic.pilhaProcId, i);
+                }
+            });
+
             anotacao.itensCorrelacionados.forEach((item, fIdx) => {
                 if (item.subAnotacoes) {
-                    flatSubAnotacoes.push(...item.subAnotacoes.map((s, idx) => ({ ...s, viewSource: fIdx, localIndex: idx })));
+                    let anchorCidx = item.pilhaProcId ? pilhaAnchorMapSub.get(item.pilhaProcId) : fIdx;
+                    flatSubAnotacoes.push(...item.subAnotacoes.map((s, idx) => ({ ...s, viewSource: anchorCidx, localIndex: idx })));
                 }
             });
         }
 
         if (flatSubAnotacoes.length > 0) {
-            const subCardsHTML = flatSubAnotacoes.map((sub, sIdx) => {
-                const intencao = sub.intencao || 'premissa';
-                const isHasIntent = true; 
-                let iconSVG = '';
-
-                if (intencao === 'comando') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>`;
-                } else if (intencao === 'texto') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
-                } else if (intencao === 'nota') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
-                } else if (intencao === 'premissa') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`;
-                } else if (intencao === 'fundamentacao') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`;
-                } else if (intencao === 'alegacao') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
-                } else if (intencao === 'fundamento_sentenca') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16M4 2h16M6 6v12M10 6v12M14 6v12M18 6v12M2 6h20"></path></svg>`;
-                } else if (intencao === 'refutacao') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>`;
-                } else if (intencao === 'preliminar') {
-                    iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
-                }
-
-                const badgeClass = isHasIntent ? `sub-badge has-intent intencao-${intencao}` : 'sub-badge';
-                // Note que o sIdx (índice global flat) continua sendo usado APENAS para gerar a letra alfabética (A, B, C)
-                const label = isHasIntent ? `${iconSVG} ${numero}.${gerarLetra(sIdx)}` : `${numero}.${gerarLetra(sIdx)}`;
-                
-                const textoFormatado = renderizarMarkdownSeguro(escaparHTML(sub.texto));
-                
-                // Cálculo rigoroso da borda de fase com base na nova estrutura
-                let faseSub = faseDoCard;
-                if (sub.viewSource !== 'main' && anotacao.itensCorrelacionados) {
-                    const cIdx = parseInt(sub.viewSource, 10);
-                    if (!isNaN(cIdx) && anotacao.itensCorrelacionados[cIdx]) {
-                         faseSub = typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(anotacao.itensCorrelacionados[cIdx].documento) : 4;
+            const subCardsHTMLArray = [];
+            const gruposProcessadosNesteCard = new Set();
+        
+            flatSubAnotacoes.forEach((sub, sIdx) => {
+                // 1. NÓS SOLTOS (Comportamento original preservado)
+                if (!sub.grupoId) {
+                    const intencao = sub.intencao || 'premissa';
+                    const iconSVG = obterIconeIntencao(intencao);
+                    const isRevisada = sub.revisada === true;
+                    const textoFormatado = renderizarMarkdownSeguro(escaparHTML(sub.texto));
+                    
+                    let faseSub = faseDoCard;
+                    if (sub.viewSource !== 'main' && anotacao.itensCorrelacionados) {
+                        const cIdx = parseInt(sub.viewSource, 10);
+                        if (!isNaN(cIdx) && anotacao.itensCorrelacionados[cIdx]) {
+                             faseSub = typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(anotacao.itensCorrelacionados[cIdx].documento) : 4;
+                        }
+                    }
+                    
+                    const bordaFaseClass = `borda-fase-${faseSub}`;
+                    const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : `sub-annotation-item`;
+        
+                    subCardsHTMLArray.push(`
+                        <div class="${itemWrapperClass}" data-source="${sub.viewSource}">
+                            <div class="sub-annotation-card ${bordaFaseClass}">
+                                <div class="sub-badge has-intent intencao-${intencao}" title="Opções" onclick="abrirMenuSubAnotacao('${activeTabId}', ${index}, '${sub.viewSource}', ${sub.localIndex}, event)">
+                                    ${iconSVG} ${numero}.${gerarLetra(sIdx)}
+                                </div>
+                                <div class="sub-text-content" data-raw-text="${escaparHTML(sub.texto)}" data-raw-title="Nó de Ideia" ondblclick="TopicsManager.abrirModoLeitura(this)">${textoFormatado}</div>
+                                <div class="btn-read-mode-trigger sub-read-badge" title="Modo Leitura" data-raw-text="${escaparHTML(sub.texto)}" data-raw-title="Nó de Ideia" onclick="TopicsManager.abrirModoLeitura(this)">
+                                    <svg><use href="#icon-book-open"></use></svg>
+                                </div>
+                                <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(sub.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                    Copiar Trecho
+                                </button>
+                                ${_gerarBtnRevisaoHtml(activeTabId, index, sub.viewSource, sub.localIndex, intencao, isRevisada)}
+                            </div>
+                        </div>`);
+                } 
+                // 2. NÓS AGRUPADOS (A PILHA)
+                else {
+                    if (!gruposProcessadosNesteCard.has(sub.grupoId)) {
+                        gruposProcessadosNesteCard.add(sub.grupoId);
+                        subCardsHTMLArray.push(_gerarHtmlPilha(sub, renderContext, activeTabId));
                     }
                 }
-                const bordaFaseClass = `borda-fase-${faseSub}`;
-
-                const isNotaInterna = intencao === 'nota';
-                const isRevisada = sub.revisada === true;
-                const itemWrapperClass = isNotaInterna ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : `sub-annotation-item`;
-
-                return `
-                    <div class="${itemWrapperClass}" data-source="${sub.viewSource}">
-                        <div class="sub-annotation-card ${bordaFaseClass}">
-                            <!-- NOVO CONTRATO AQUI: Passamos viewSource E localIndex antes do event -->
-                            <div class="${badgeClass}"
-                                 title="Opções desta ideia secundária"
-                                 onclick="abrirMenuSubAnotacao('${activeTabId}', ${index}, '${sub.viewSource}', ${sub.localIndex}, event)">
-                                ${label}
-                            </div>
-                            <div class="sub-text-content" data-raw-text="${escaparHTML(sub.texto)}" data-raw-title="Nó de Ideia" ondblclick="TopicsManager.abrirModoLeitura(this)">${textoFormatado}</div>
-                            <div class="btn-read-mode-trigger sub-read-badge" title="Modo Leitura" data-raw-text="${escaparHTML(sub.texto)}" data-raw-title="Nó de Ideia" onclick="TopicsManager.abrirModoLeitura(this)">
-                                <svg><use href="#icon-book-open"></use></svg>
-                            </div>
-                            <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(sub.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto para a área de transferência">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                Copiar Trecho
-                            </button>
-                            ${_gerarBtnRevisaoHtml(activeTabId, index, sub.viewSource, sub.localIndex, intencao, isRevisada)}
-                        </div>
-                    </div>`;
-            }).join('');
-
-            htmlSubAnotacoes = `<div class="sub-annotations-wrapper">${subCardsHTML}</div>`;
+            });
+        
+            if (subCardsHTMLArray.length > 0) {
+                htmlSubAnotacoes = `<div class="sub-annotations-wrapper">${subCardsHTMLArray.join('')}</div>`;
+            }
         }
 
-        // NOVO: Processar itens agrupados
+        // NOVO: Processar itens agrupados (Com suporte O(1) a Pilha Processual)
         let htmlCorrelacionados = '';
         if (anotacao.itensCorrelacionados && anotacao.itensCorrelacionados.length > 0) {
+            const processadosPilha = new Set();
+            
+            // OTIMIZAÇÃO O(1): Mapeia as âncoras das pilhas antes do loop principal
+            const pilhaAnchorMap = new Map();
+            anotacao.itensCorrelacionados.forEach((ic, i) => {
+                if (ic.pilhaProcId && !pilhaAnchorMap.has(ic.pilhaProcId)) {
+                    pilhaAnchorMap.set(ic.pilhaProcId, i);
+                }
+            });
+
             htmlCorrelacionados = anotacao.itensCorrelacionados.map((item, cIdx) => {
                 const itemTag = poloParaClasse(item.polo);
                 const itemMeta = _obterMetaTexto(item);
+                const docSeguro = item.documento ? escaparHTML(item.documento) : escaparHTML(item.polo);
+                const poloSeguro = item.polo ? escaparHTML(item.polo) : '';
                 
+                // --- FLUXO A: PILHA PROCESSUAL ---
+                if (item.pilhaProcId) {
+                    if (processadosPilha.has(item.pilhaProcId)) return ''; 
+                    processadosPilha.add(item.pilhaProcId);
+                    const anchorCidx = pilhaAnchorMap.get(item.pilhaProcId);
+                    
+                    // OTIMIZAÇÃO O(N): Mapeamento nativo preservando o índice original
+                    const itensDestaPilhaObj = anotacao.itensCorrelacionados
+                        .map((ic, originalCIdx) => ({ ic, originalCIdx }))
+                        .filter(obj => obj.ic.pilhaProcId === item.pilhaProcId);
+                    
+                    const faseClass = `fase-${typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(item.documento) : 4}`;
+                    
+                    let htmlTextosInternos = itensDestaPilhaObj.map(obj => {
+                        const metaText = _obterMetaTexto(obj.ic);
+                        return `
+                        <div style="margin-bottom:8px;">
+                            <span class="card-meta" style="cursor:pointer; font-size:0.75rem; color:var(--trt-blue); font-weight:700;" title="Clique: Copiar | Shift+Clique: Editar folha | Ctrl+Clique: Ir ao PDF" onclick="handleMetaClick(event, '${activeTabId}', ${index}, true, ${obj.originalCIdx})">${metaText}</span>
+                            <p style="font-size:0.85rem; margin-top:4px;">"${renderizarMarkdownSeguro(escaparHTML(obj.ic.conteudo))}"</p>
+                        </div>`;
+                    }).join('<hr class="stack-text-divider">');
+                    
+                    return `
+                    <div class="correlated-item-wrapper" data-cidx="${anchorCidx}"
+                         draggable="true"
+                         ondragstart="DnDManager.dragStart(event, '${activeTabId}', ${index}, ${anchorCidx})"
+                         ondragover="DnDManager.dragOver(event)"
+                         ondrop="DnDManager.drop(event, '${activeTabId}', ${index}, ${anchorCidx})"
+                         ondragenter="DnDManager.dragEnter(event)"
+                         ondragleave="DnDManager.dragLeave(event)"
+                         ondragend="DnDManager.dragEnd(event)">
+                         
+                        <div class="two-way-arrow-container correlated-drag-handle" title="Arraste a pasta inteira para reordenar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        
+                        <div class="annotation-card correlated-card pilha-processual-card ${faseClass}">
+                            <div class="card-header">
+                                <div style="display:flex; gap:6px;">
+                                    <span class="polo-tag doc-tag">🗂️ ${docSeguro}</span>
+                                    ${(poloSeguro && poloSeguro !== docSeguro) ? `<span class="polo-tag ${itemTag}">${poloSeguro}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="scrollable-stack-text">${htmlTextosInternos}</div>
+                            
+                            <!-- BOTÃO ATUALIZADO: Dispara o novo motor de leitura estruturada -->
+                            <div class="btn-read-mode-trigger pilha-read-badge" title="Ler Pastinha Completa" onclick="TopicsManager.abrirModoLeituraPilhaProcessual('${activeTabId}', ${index}, '${item.pilhaProcId}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                            </div>
+                            <div class="card-actions-bar">
+                                <button title="Adicionar Nó de Ideia" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}, cIdx:${anchorCidx}}; acionarNovoNoIdeia()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                                <button class="delete-btn" title="Desagrupar" onclick="TopicsManager.desagruparPilhaProcessual('${activeTabId}', ${index}, '${item.pilhaProcId}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 22L2 22 2 14M22 2L14 2 14 10" stroke-linecap="round" stroke-linejoin="round"/><line x1="22" y1="2" x2="10" y2="14" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="22" x2="14" y2="10" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+
+                // --- FLUXO B: RENDERIZAR CARD NORMAL ---
                 let cConteudo = '';
                 let cComent = '';
                 
@@ -556,8 +722,8 @@ window.TopicsManager = (function () {
                     <div class="annotation-card correlated-card fase-${typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(item.documento) : 4}">
                         <div class="card-header">
                             <div style="display:flex; gap:6px;">
-                                <span class="polo-tag doc-tag">${item.documento ? escaparHTML(item.documento) : escaparHTML(item.polo)}</span>
-                                ${(item.documento && item.polo && item.polo !== item.documento) ? `<span class="polo-tag ${itemTag}">${escaparHTML(item.polo)}</span>` : ''}
+                                <span class="polo-tag doc-tag">${docSeguro}</span>
+                                ${(poloSeguro && poloSeguro !== docSeguro) ? `<span class="polo-tag ${itemTag}">${poloSeguro}</span>` : ''}
                             </div>
                             <span class="card-meta" style="cursor:pointer;" title="Clique: Copiar | Shift+Clique: Editar folha | Ctrl+Clique: Ir ao PDF" onclick="handleMetaClick(event, '${activeTabId}', ${index}, true, ${cIdx})">${itemMeta}</span>
                         </div>
@@ -670,7 +836,7 @@ window.TopicsManager = (function () {
      * acumulou um número ímpar de cards, esta Tese nasce à direita, e
      * vice-versa. A regra é sempre recalculada a partir do dado real.
      */
-    function _gerarHtmlTeseGroup(teseAtual, diretrizes, tabId, corTema, indexGlobal) {
+    function _gerarHtmlTeseGroup(teseAtual, diretrizes, tabId, corTema, indexGlobal, renderContext) {
         const rgbaTeseFundo = hexToRgba(corTema, 0.15);
         const rgbaTeseBorda = hexToRgba(corTema, 0.4);
         const corTituloTese = escurecerCor(corTema, 0.6);
@@ -682,34 +848,46 @@ window.TopicsManager = (function () {
         const alignClass = isLeft ? 'align-left' : 'align-right';
         const teseViewSource = `tese:${teseAtual}`;
 
-        const tesesHtml = diretrizes.map((d, sIdx) => {
-            const intencao = d.intencao || 'premissa';
-            const iconSVG = obterIconeIntencao(intencao);
-            const isRevisada = d.revisada === true;
-            const itemWrapperClass = intencao === 'nota'
-                ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}`
-                : 'sub-annotation-item';
+        const gruposProcessadosNesteCard = new Set();
+        const subCardsHTMLArray = [];
 
-            return `
-            <div class="${itemWrapperClass}" data-source="${teseViewSource}">
-                <div class="sub-annotation-card" style="border-left: 5px solid ${corTema}; border-color: ${rgbaTeseBorda};">
-                    <div class="sub-badge has-intent intencao-${intencao}"
-                         title="Opções desta diretriz"
-                         onclick="abrirMenuSubAnotacao('${tabId}', null, '${teseViewSource.replace(/'/g, "\\'")}', ${sIdx}, event)">
-                         ${iconSVG} T.${sIdx + 1}
+        diretrizes.forEach((d, sIdx) => {
+            // CÓPIA SUPERFICIAL: Previne mutação do JSON original durante a renderização
+            const dRender = { ...d, viewSource: teseViewSource };
+
+            if (!dRender.grupoId) {
+                // Renderização normal de nó solto (usando dRender)
+                const intencao = dRender.intencao || 'premissa';
+                const iconSVG = obterIconeIntencao(intencao);
+                const isRevisada = dRender.revisada === true;
+                const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
+
+                subCardsHTMLArray.push(`
+                <div class="${itemWrapperClass}" data-source="${teseViewSource}">
+                    <div class="sub-annotation-card" style="border-left: 5px solid ${corTema}; border-color: ${rgbaTeseBorda};">
+                        <div class="sub-badge has-intent intencao-${intencao}" title="Opções" onclick="abrirMenuSubAnotacao('${tabId}', null, '${teseViewSource.replace(/'/g, "\\'")}', ${sIdx}, event)">
+                             ${iconSVG} T.${sIdx + 1}
+                        </div>
+                        <div class="sub-text-content" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz de Tese" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(dRender.texto))}</div>
+                        <div class="btn-read-mode-trigger sub-read-badge" title="Modo Leitura" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz de Tese" onclick="TopicsManager.abrirModoLeitura(this)">
+                            <svg><use href="#icon-book-open"></use></svg>
+                        </div>
+                        <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(dRender.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            Copiar
+                        </button>
+                        ${_gerarBtnRevisaoHtml(tabId, null, teseViewSource, sIdx, intencao, isRevisada)}
                     </div>
-                    <div class="sub-text-content" data-raw-text="${escaparHTML(d.texto)}" data-raw-title="Diretriz de Tese" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(d.texto))}</div>
-                    <div class="btn-read-mode-trigger sub-read-badge" title="Modo Leitura" data-raw-text="${escaparHTML(d.texto)}" data-raw-title="Diretriz de Tese" onclick="TopicsManager.abrirModoLeitura(this)">
-                        <svg><use href="#icon-book-open"></use></svg>
-                    </div>
-                    <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(d.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto para a área de transferência">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        Copiar Trecho
-                    </button>
-                    ${_gerarBtnRevisaoHtml(tabId, null, teseViewSource, sIdx, intencao, isRevisada)}
-                </div>
-            </div>`;
-        }).join('');
+                </div>`);
+            } else {
+                // Renderização da Pilha em Teses
+                if (!gruposProcessadosNesteCard.has(dRender.grupoId)) {
+                    gruposProcessadosNesteCard.add(dRender.grupoId);
+                    subCardsHTMLArray.push(_gerarHtmlPilha(dRender, renderContext, tabId));
+                }
+            }
+        });
+        const tesesHtml = subCardsHTMLArray.join('');
 
         return `
         <div class="timeline-item-master ${alignClass} nivel-hierarquico">
@@ -921,6 +1099,12 @@ window.TopicsManager = (function () {
             let cardsHTML = '';
             let ultimaTeseRenderizada = null;
 
+            // Injeta o contexto de renderização isolado para a aba
+            const renderContext = {
+                romanCounter: 0,
+                romanMap: new Map() // Mapeia grupoId -> Numeral Romano
+            };
+
             topicoAtivo.anotacoes.forEach((an, index) => {
                 // 1. Busca os dados de forma segura (preserva notas já criadas)
                 const chaveTeseCrua = an.tese || "Tese Não Nomeada";
@@ -937,7 +1121,7 @@ window.TopicsManager = (function () {
                     // 4. Ocultação Segura: Só desenha o card se a tese tiver nome OU se houver notas salvas nela
                     if (isTesePreenchida || diretrizes.length > 0) {
                         const tituloExibicao = isTesePreenchida ? an.tese : "Tese Não Nomeada";
-                        cardsHTML += _gerarHtmlTeseGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index);
+                        cardsHTML += _gerarHtmlTeseGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index, renderContext);
                     }
                     
                     // Atualiza a referência do agrupamento atual
@@ -945,7 +1129,7 @@ window.TopicsManager = (function () {
                 }
                 
                 // Desenha o card da prova e o número colorido exatamente como antes (Intocado)
-                cardsHTML += criarCard(an, index, topicoAtivo.anotacoes);
+                cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
             });
             
             // --- RENDERIZAÇÃO: DIRETRIZES GLOBAIS (INCONDICIONAL) ---
@@ -954,31 +1138,40 @@ window.TopicsManager = (function () {
 
             // Se existirem diretrizes, monta os nós de ideia
             if (topicoAtivo.diretrizesGlobais && topicoAtivo.diretrizesGlobais.length > 0) {
-                globaisHtml = topicoAtivo.diretrizesGlobais.map((d, sIdx) => {
-                    const intencao = d.intencao || 'premissa';
-                    const iconSVG = obterIconeIntencao(intencao);
-                    const isRevisada = d.revisada === true;
-                    const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
-                    return `
-                    <div class="${itemWrapperClass}" data-source="global">
-                        <div class="sub-annotation-card borda-global">
-                            <div class="sub-badge has-intent intencao-${intencao}" 
-                                 title="Opções desta diretriz"
-                                 onclick="abrirMenuSubAnotacao('${activeTabId}', null, 'global', ${sIdx}, event)">
-                                 ${iconSVG} G.${sIdx + 1}
-                            </div>
-                            <div class="sub-text-content" data-raw-text="${escaparHTML(d.texto)}" data-raw-title="Diretriz Global" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(d.texto))}</div>
-                            <div class="btn-read-mode-trigger sub-read-badge" title="Modo Leitura" data-raw-text="${escaparHTML(d.texto)}" data-raw-title="Diretriz Global" onclick="TopicsManager.abrirModoLeitura(this)">
-                                <svg><use href="#icon-book-open"></use></svg>
-                            </div>
-                            <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(d.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto para a área de transferência">
+                const gruposGProcessados = new Set();
+                const globaisArray = [];
+
+                topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
+                    // CÓPIA SUPERFICIAL: Previne mutação do JSON original
+                    const dRender = { ...d, viewSource: 'global' };
+
+                    if (!dRender.grupoId) {
+                        const intencao = dRender.intencao || 'premissa';
+                        const iconSVG = obterIconeIntencao(intencao);
+                        const isRevisada = dRender.revisada === true;
+                        const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
+                        
+                        globaisArray.push(`
+                        <div class="${itemWrapperClass}" data-source="global">
+                            <div class="sub-annotation-card borda-global">
+                                <div class="sub-badge has-intent intencao-${intencao}" onclick="abrirMenuSubAnotacao('${activeTabId}', null, 'global', ${sIdx}, event)">${iconSVG} G.${sIdx + 1}</div>
+                                <div class="sub-text-content" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(dRender.texto))}</div>
+                                <div class="btn-read-mode-trigger sub-read-badge" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" onclick="TopicsManager.abrirModoLeitura(this)"><svg><use href="#icon-book-open"></use></svg></div>
+                                <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(dRender.texto).replace(/'/g, "\\'")}')" title="Copiar">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                    Copiar Trecho
+                                    Copiar
                                 </button>
                                 ${_gerarBtnRevisaoHtml(activeTabId, null, 'global', sIdx, intencao, isRevisada)}
                             </div>
-                        </div>`;
-                    }).join('');
+                        </div>`);
+                    } else {
+                        if (!gruposGProcessados.has(dRender.grupoId)) {
+                            gruposGProcessados.add(dRender.grupoId);
+                            globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
+                        }
+                    }
+                });
+                globaisHtml = globaisArray.join('');
             }
 
             // O CARD MESTRE É RENDERIZADO SEMPRE (Mesmo sem nós de ideia)
@@ -1330,11 +1523,322 @@ window.TopicsManager = (function () {
         }, { passive: false });
     }
 
+    function abrirModoLeituraPilha(topicoId, grupoId, numeroRomano) {
+        const topico = topicos.find(t => t.id === topicoId);
+        if (!topico) return;
+        
+        let htmlAgrupado = '';
+        let itemContador = 1;
+
+        // Mapeamento de rótulos e cores para os badges de intenção
+        const getIntencaoLabel = (intKey) => {
+            const mapa = {
+                'comando': { text: 'COMANDO', color: '#c62828', bg: '#ffebee' },
+                'texto': { text: 'TEXTO FIXO', color: '#1565c0', bg: '#e3f2fd' },
+                'premissa': { text: 'PREMISSA LÓGICA', color: '#7b1fa2', bg: '#f3e5f5' },
+                'fundamentacao': { text: 'FUNDAMENTAÇÃO LEGAL', color: '#00695c', bg: '#e0f2f1' },
+                'refutacao': { text: 'REFUTAÇÃO / MÉRITO', color: '#8B4513', bg: '#efebe9' },
+                'preliminar': { text: 'PREJUDICIAL / FILTRO', color: '#5d4037', bg: '#efebe9' },
+                'veredito': { text: 'VEREDITO', color: '#e65100', bg: '#fff3e0' },
+                'nota': { text: 'NOTA INTERNA', color: '#616161', bg: '#f5f5f5' }
+            };
+            return mapa[intKey] || { text: 'DIRETRIZ', color: '#475569', bg: '#f1f5f9' };
+        };
+
+        const processar = (subArr, origemHtml) => {
+            if (subArr) {
+                subArr.filter(s => s.grupoId === grupoId).forEach((no) => {
+                    const intencaoKey = no.intencao || 'premissa';
+                    const configInt = getIntencaoLabel(intencaoKey);
+                    const isRevisada = no.revisada ? ' <span title="Revisada" style="color:#48bb78; margin-left:4px;">✔</span>' : '';
+                    
+                    htmlAgrupado += `
+                    <div style="padding-bottom: 16px; border-bottom: 1px dashed #e2e8f0; margin-bottom: 16px;">
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                            <span style="font-size:0.75rem; color:#64748b; font-weight:800; background:#f1f5f9; padding:2px 8px; border-radius:12px;">ITEM ${itemContador++}</span>
+                            <span style="font-size:0.7rem; font-weight:800; color:${configInt.color}; background:${configInt.bg}; padding:2px 8px; border-radius:12px; border: 1px solid ${configInt.color}40; display:flex; align-items:center;">${configInt.text}${isRevisada}</span>
+                            <span style="font-size:0.8rem; color:#475569; display:flex; align-items:center; gap:4px; margin-left: 4px;">${origemHtml}</span>
+                        </div>
+                        <div style="font-size: 1rem; color: #334155; line-height: 1.6;">
+                            ${renderizarMarkdownSeguro(escaparHTML(no.texto))}
+                        </div>
+                    </div>`;
+                });
+            }
+        };
+
+        // 1. Varre Diretrizes Globais (Corrigindo o ponto cego original)
+        processar(topico.diretrizesGlobais, '🌐 <strong>Diretriz Global</strong>');
+
+        // 2. Varre Teses e Provas
+        let ultimaTese = null;
+        topico.anotacoes.forEach(an => {
+            const teseAtual = an.tese || "Provas sem agrupamento de tese";
+            
+            // Subnós de Tese (Corrigindo o ponto cego original)
+            if (teseAtual !== ultimaTese) {
+                if (topico.diretrizesPorTese && topico.diretrizesPorTese[teseAtual]) {
+                    processar(topico.diretrizesPorTese[teseAtual], `⚖️ Tese: <strong>${escaparHTML(teseAtual)}</strong>`);
+                }
+                ultimaTese = teseAtual;
+            }
+
+            // Subnós da Prova Master
+            const docMaster = an.documento || an.polo || 'Elemento Probatório';
+            const flMaster = an.pagina ? `(fl. ${an.pagina})` : '';
+            processar(an.subAnotacoes, `📄 ${escaparHTML(docMaster)} <em>${escaparHTML(flMaster)}</em>`);
+
+            // Subnós das Provas Correlacionadas (Agrupadas)
+            if (an.itensCorrelacionados) {
+                an.itensCorrelacionados.forEach(ic => {
+                    const docCorr = ic.documento || ic.polo || 'Elemento Correlacionado';
+                    const flCorr = ic.pagina ? `(fl. ${ic.pagina})` : '';
+                    processar(ic.subAnotacoes, `📄 ${escaparHTML(docCorr)} <em>${escaparHTML(flCorr)}</em>`);
+                });
+            }
+        });
+
+        const modal = document.getElementById('reading-mode-modal');
+        document.getElementById('reading-mode-title-text').textContent = `Leitura da Pilha ${numeroRomano}`;
+        document.getElementById('reading-mode-content').innerHTML = htmlAgrupado || '<p style="color:#666; font-style:italic;">Nenhuma ideia encontrada para este grupo.</p>';
+        document.getElementById('reading-mode-backdrop').style.display = 'block';
+        modal.style.display = 'flex';
+    }
+
+    function abrirModoLeituraPilhaProcessual(topicoId, parentIndex, pilhaProcId) {
+        const topico = topicos.find(t => t.id === topicoId);
+        if (!topico) return;
+        const mestre = topico.anotacoes[parentIndex];
+        
+        // Otimização O(N) e Preservação do Índice Original
+        const itensDestaPilhaObj = mestre.itensCorrelacionados
+            .map((ic, originalCIdx) => ({ ic, originalCIdx }))
+            .filter(obj => obj.ic.pilhaProcId === pilhaProcId);
+        
+        if (itensDestaPilhaObj.length === 0) return;
+        const docSeguro = escaparHTML(itensDestaPilhaObj[0].ic.documento || itensDestaPilhaObj[0].ic.polo || 'Pastinha de Provas');
+        
+        let htmlAgrupado = '';
+        let markdownAcumulado = `### 🗂️ Leitura: ${docSeguro}\n\n`;
+        
+        // COMPATIBILIDADE CRÍTICA: O motor nativo \`copiarTextoModoLeitura\` quebra o HTML a cada '\\n' 
+        // e envolve em <p>. Usamos APENAS tags inline (<strong>, <i>, <br>) para evitar HTML inválido no Word/PJe.
+        let htmlAcumulado = `<strong>🗂️ Leitura: ${docSeguro}</strong>\n`;
+        
+        itensDestaPilhaObj.forEach((obj, i) => {
+            const ic = obj.ic;
+            const metaTexto = _obterMetaTexto(ic);
+            
+            // HTML de Tela: Componente interativo com UX de fechamento automático síncrono
+            const metaInterativoTela = _gerarMetaInterativo(topicoId, parentIndex, obj.originalCIdx, metaTexto, true);
+            
+            htmlAgrupado += `
+            <div style="padding-bottom: 16px; border-bottom: 1px dashed #e2e8f0; margin-bottom: 16px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <span style="font-size:0.75rem; color:#64748b; font-weight:800; background:#f1f5f9; padding:2px 8px; border-radius:12px;">ITEM ${i + 1}</span>
+                    ${metaInterativoTela}
+                </div>
+                <div style="font-size: 1.05rem; color: #334155; line-height: 1.6; font-style: italic;">
+                    "${renderizarMarkdownSeguro(escaparHTML(ic.conteudo))}"
+                </div>
+            </div>`;
+            
+            // Sincronização de Estado (Copy-Safe)
+            markdownAcumulado += `**ITEM ${i + 1}** ${metaTexto}\n"${ic.conteudo}"\n\n`;
+            htmlAcumulado += `<strong>ITEM ${i + 1}</strong> ${metaTexto}<br><i>"${renderizarMarkdownSeguro(escaparHTML(ic.conteudo))}"</i>\n`;
+        });
+        
+        // Mutação das Variáveis Globais (Resolve o Stale State)
+        _textoLeituraAtualMarkdown = markdownAcumulado.trim();
+        _textoLeituraAtualHTML = htmlAcumulado;
+        
+        // Renderização Visual no Modal
+        const modal = document.getElementById('reading-mode-modal');
+        document.getElementById('reading-mode-title-text').innerHTML = `🗂️ Leitura: ${docSeguro}`;
+        document.getElementById('reading-mode-content').innerHTML = htmlAgrupado;
+        document.getElementById('reading-mode-backdrop').style.display = 'block';
+        modal.style.display = 'flex';
+    }
+
+    function desagruparPilha(topicoId, grupoId) {
+        // Bloqueia o vazamento de clique capturando o evento globalmente (sem sujar o HTML)
+        if (typeof window.event !== 'undefined' && window.event) {
+            window.event.stopPropagation();
+        }
+        
+        if (!confirm('Deseja desagrupar esta pilha e restaurar os nós individualmente?')) return;
+        const topico = topicos.find(t => t.id === topicoId);
+        
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === grupoId) delete no.grupoId;
+        });
+
+        renderizarFichario(topicos); 
+        if(window.salvarBackupAutomatico) salvarBackupAutomatico();
+        if(window.exibirToast) exibirToast('Pilha desagrupada com sucesso.', 'sucesso');
+    }
+
+    let _contextoEdicaoPilha = null;
+
+    function abrirModalPilha(topicoId, grupoId) {
+        _contextoEdicaoPilha = { topicoId, grupoId };
+        const topico = topicos.find(t => t.id === topicoId);
+        if (!topico) return;
+
+        let titAtual = "📚 Grupo de Ideias";
+        let descManualSalva = ""; // Inicia vazia (Piloto automático ON)
+
+        // Busca o valor ATUAL salvo no banco
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === grupoId) {
+                if (no.grupoTitulo) titAtual = no.grupoTitulo;
+                // Só carrega se existir de fato uma edição manual no banco
+                if (no.grupoDescricao) descManualSalva = no.grupoDescricao;
+            }
+        });
+
+        const inputTitulo = document.getElementById('input-pilha-titulo');
+        const inputDesc = document.getElementById('input-pilha-descricao');
+        
+        inputTitulo.value = titAtual;
+        inputDesc.value = descManualSalva; 
+        
+        // Magia de UX: Se não tem edição manual, o placeholder recebe o preview automático
+        if (descManualSalva === "") {
+            const previewAuto = _obterTextosDaPilha(topico, grupoId);
+            inputDesc.placeholder = previewAuto !== "" ? previewAuto : "Nós vazios. O texto gerado aparecerá aqui...";
+        } else {
+            inputDesc.placeholder = "Deixe vazio para o sistema extrair os textos automaticamente.";
+        }
+
+        document.getElementById('pilha-modal-backdrop').style.display = 'block';
+        document.getElementById('modal-editar-pilha').style.display = 'flex';
+    }
+
+    function fecharModalPilha() {
+        document.getElementById('pilha-modal-backdrop').style.display = 'none';
+        document.getElementById('modal-editar-pilha').style.display = 'none';
+        _contextoEdicaoPilha = null;
+    }
+
+    function salvarEdicaoPilha() {
+        if (!_contextoEdicaoPilha) return;
+        const topico = topicos.find(t => t.id === _contextoEdicaoPilha.topicoId);
+        if (!topico) return;
+        
+        const nTit = document.getElementById('input-pilha-titulo').value.trim();
+        const nDesc = document.getElementById('input-pilha-descricao').value.trim();
+
+        // MOTOR DE LIMPEZA DE ESTADO (State Sanitization)
+        _percorrerTodosOsNos(topico, (no) => {
+            if (no.grupoId === _contextoEdicaoPilha.grupoId) {
+                no.grupoTitulo = nTit;
+                
+                if (nDesc === "") {
+                    // Se o usuário deixou vazio, DELETA a chave para manter o JSON limpo
+                    // e ativar a renderização automática no _gerarHtmlPilha
+                    delete no.grupoDescricao;
+                } else {
+                    no.grupoDescricao = nDesc;
+                }
+            }
+        });
+
+        fecharModalPilha();
+        renderizarFichario(topicos); // Dispara a view atualizada
+        if (window.salvarBackupAutomatico) salvarBackupAutomatico(); // Grava JSON limpo
+    }
+
+    let _pilhaProcContext = null;
+
+    function abrirModalPilhaProcessual(topicoId, parentIndex, cIdxOrigem) {
+        const topico = topicos.find(t => t.id === topicoId);
+        const mestre = topico.anotacoes[parentIndex];
+        const itemReferencia = mestre.itensCorrelacionados[cIdxOrigem];
+
+        const elegiveis = mestre.itensCorrelacionados.map((item, idx) => ({ item, idx }))
+            .filter(obj => 
+                obj.item.documento === itemReferencia.documento && 
+                obj.item.polo === itemReferencia.polo &&
+                !obj.item.pilhaProcId 
+            );
+
+        if (elegiveis.length < 2 && !itemReferencia.pilhaProcId) {
+            if(typeof exibirToast === 'function') exibirToast('Não há outros cards elegíveis para agrupar com este.', 'aviso');
+            return;
+        }
+
+        _pilhaProcContext = { topicoId, parentIndex };
+        let html = '';
+
+        elegiveis.forEach(obj => {
+            const textoBruto = obj.item.conteudo.replace(/<[^>]*>?/gm, '').substring(0, 70) + '...';
+            const textoSeguro = escaparHTML(textoBruto); 
+
+            html += `
+            <label style="display:flex; align-items:flex-start; gap:10px; padding:10px; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; background:#fafafa; transition: background 0.2s;">
+                <input type="checkbox" class="pilha-chk" value="${obj.idx}" ${obj.idx === cIdxOrigem ? 'checked disabled' : ''} style="margin-top:2px; transform: scale(1.1);">
+                <span style="font-size:0.85rem; color:var(--text-dark); line-height:1.4;">${textoSeguro}</span>
+            </label>`;
+        });
+
+        document.getElementById('lista-checklist-pilha').innerHTML = html;
+        document.getElementById('pilha-processual-backdrop').style.display = 'block';
+        document.getElementById('modal-pilha-processual').style.display = 'flex';
+    }
+
+    function fecharModalPilhaProcessual() {
+        document.getElementById('pilha-processual-backdrop').style.display = 'none';
+        document.getElementById('modal-pilha-processual').style.display = 'none';
+        _pilhaProcContext = null;
+    }
+
+    function salvarPilhaProcessual() {
+        if (!_pilhaProcContext) return;
+        const topico = topicos.find(t => t.id === _pilhaProcContext.topicoId);
+        const chks = document.querySelectorAll('.pilha-chk:checked');
+        
+        if (chks.length < 2) {
+            if(typeof exibirToast === 'function') exibirToast('Selecione pelo menos 2 provas.', 'aviso');
+            return;
+        }
+
+        const novaPilhaId = 'pilhaProc-' + Date.now();
+        
+        chks.forEach(chk => {
+            const idx = parseInt(chk.value, 10);
+            topico.anotacoes[_pilhaProcContext.parentIndex].itensCorrelacionados[idx].pilhaProcId = novaPilhaId;
+        });
+
+        fecharModalPilhaProcessual();
+        renderizarFichario(topicos); 
+        if(window.salvarBackupAutomatico) salvarBackupAutomatico();
+        if(typeof exibirToast === 'function') exibirToast('Pilha Processual criada!', 'sucesso');
+    }
+
+    function desagruparPilhaProcessual(topicoId, parentIndex, pilhaId) {
+        if(!confirm('Desagrupar e restaurar as provas individualmente?')) return;
+        
+        const topico = topicos.find(t => t.id === topicoId);
+        topico.anotacoes[parentIndex].itensCorrelacionados.forEach(ic => {
+            if (ic.pilhaProcId === pilhaId) delete ic.pilhaProcId;
+        });
+
+        renderizarFichario(topicos);
+        if(window.salvarBackupAutomatico) salvarBackupAutomatico();
+        if(typeof exibirToast === 'function') exibirToast('Pilha desagrupada com sucesso.', 'info');
+    }
+
     // API pública do módulo
     return {
         obterCor,
+        abrirModalPilha,
+        fecharModalPilha,
+        salvarEdicaoPilha,
         obterCorContraste,
         renderizarFichario,
+        abrirModoLeituraPilha,
+        desagruparPilha,
         getActiveTabId: () => activeTabId,
         setActiveTabId: (id) => { activeTabId = id; },
         escaparHTML,
@@ -1343,7 +1847,13 @@ window.TopicsManager = (function () {
         fecharModoLeitura,
         copiarTextoModoLeitura,
         hexToRgba,
-        rolarParaProximaNotaOculta
+        rolarParaProximaNotaOculta,
+        // NOVAS EXPORTAÇÕES DA PILHA PROCESSUAL
+        abrirModoLeituraPilhaProcessual,
+        abrirModalPilhaProcessual,
+        fecharModalPilhaProcessual,
+        salvarPilhaProcessual,
+        desagruparPilhaProcessual
     };
 
 })();
