@@ -879,9 +879,9 @@ window.TopicsManager = (function () {
         let iconSvgTese = '';
         if (teseClassificacao !== 'neutro') {
             const configMap = {
-                'autora': '<svg viewBox="0 0 24 24" fill="none" stroke="#388e3c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; transform: scaleX(-1);"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>',
-                're': '<svg viewBox="0 0 24 24" fill="none" stroke="#d32f2f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px;"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>',
-                'juizo': '<svg viewBox="0 0 24 24" fill="none" stroke="#0f253d" stroke-width="2" style="width:18px; height:18px; margin-right:6px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>'
+                'autora': '<svg viewBox="0 0 24 24" fill="none" stroke="#388e3c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; flex-shrink: 0;"><path d="M21 3v5l-9 9-5-5 9-9h5z"></path><path d="M9 13l-6 6"></path><path d="M3 21l3-3"></path></svg>',
+                're': '<svg viewBox="0 0 24 24" fill="none" stroke="#d32f2f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; flex-shrink: 0;"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>',
+                'juizo': '<svg viewBox="0 0 24 24" fill="none" stroke="#0f253d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; flex-shrink: 0;"><path d="M14 13 6.5 20.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 5.5-5.5a2.12 2.12 0 0 0 0-3l-1.5-1.5a2.12 2.12 0 0 0-3 0L11.5 11.5"></path><path d="M15 14l-4-4"></path><path d="M8 7l4 4"></path></svg>'
             };
             iconSvgTese = configMap[teseClassificacao] || '';
         }

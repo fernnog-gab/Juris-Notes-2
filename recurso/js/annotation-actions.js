@@ -864,10 +864,22 @@ function confirmarSubAnotacao(topicoId, anotacaoIndex, cIdx = null) {
 let _ideiaContextoTese = null;
 
 const MAPA_TESE_ICONES = {
-    'neutro': { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg>', color: '#f57f17', bg: '#fff9c4', border: '#ffe082', title: 'Tese Mista' },
-    'autora': { icon: '<svg><use href="#icon-tese-autora"></use></svg>', color: '#388e3c', bg: '#e8f5e9', border: '#a5d6a7', title: 'Recurso da Autora' },
-    're':     { icon: '<svg><use href="#icon-tese-re"></use></svg>', color: '#d32f2f', bg: '#ffebee', border: '#ef9a9a', title: 'Recurso da Ré' },
-    'juizo':  { icon: '<svg><use href="#icon-tese-juizo"></use></svg>', color: '#0f253d', bg: '#e3f2fd', border: '#90caf9', title: 'Diretriz do Juízo' }
+    'neutro': { 
+        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"><circle cx="12" cy="12" r="10"></circle></svg>', 
+        color: '#f57f17', bg: '#fff9c4', border: '#ffe082', title: 'Tese Mista / Neutra' 
+    },
+    'autora': { 
+        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3v5l-9 9-5-5 9-9h5z"></path><path d="M9 13l-6 6"></path><path d="M3 21l3-3"></path></svg>', 
+        color: '#388e3c', bg: '#e8f5e9', border: '#a5d6a7', title: 'Recurso da Autora' 
+    },
+    're': { 
+        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>', 
+        color: '#d32f2f', bg: '#ffebee', border: '#ef9a9a', title: 'Recurso da Ré' 
+    },
+    'juizo': { 
+        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13 6.5 20.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 5.5-5.5a2.12 2.12 0 0 0 0-3l-1.5-1.5a2.12 2.12 0 0 0-3 0L11.5 11.5"></path><path d="M15 14l-4-4"></path><path d="M8 7l4 4"></path></svg>', 
+        color: '#0f253d', bg: '#e3f2fd', border: '#90caf9', title: 'Diretriz do Juízo' 
+    }
 };
 
 window.ciclarClassificacaoTese = function(e) {
@@ -888,7 +900,7 @@ function _aplicarVisualBotaoTese(chave) {
     btn.style.background = config.bg;
     btn.style.borderColor = config.border;
     btn.style.color = config.color;
-    btn.innerHTML = `<div style="width: 20px; height: 20px;">${config.icon}</div>`;
+    btn.innerHTML = config.icon;
 }
 
 function abrirModalTese(topicoId, index) {
