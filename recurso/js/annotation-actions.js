@@ -860,14 +860,45 @@ function confirmarSubAnotacao(topicoId, anotacaoIndex, cIdx = null) {
     exibirToast('Observação secundária vinculada.', 'sucesso');
 }
 
-/* --- MODAL DE TESE --- */
+/* --- MODAL DE TESE COM CLASSIFICAÇÃO SEMÂNTICA --- */
 let _ideiaContextoTese = null;
+
+const MAPA_TESE_ICONES = {
+    'neutro': { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg>', color: '#f57f17', bg: '#fff9c4', border: '#ffe082', title: 'Tese Mista' },
+    'autora': { icon: '<svg><use href="#icon-tese-autora"></use></svg>', color: '#388e3c', bg: '#e8f5e9', border: '#a5d6a7', title: 'Recurso da Autora' },
+    're':     { icon: '<svg><use href="#icon-tese-re"></use></svg>', color: '#d32f2f', bg: '#ffebee', border: '#ef9a9a', title: 'Recurso da Ré' },
+    'juizo':  { icon: '<svg><use href="#icon-tese-juizo"></use></svg>', color: '#0f253d', bg: '#e3f2fd', border: '#90caf9', title: 'Diretriz do Juízo' }
+};
+
+window.ciclarClassificacaoTese = function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-classificacao-tese');
+    const estados = ['neutro', 'autora', 're', 'juizo'];
+    let atual = estados.indexOf(btn.dataset.classificacao);
+    let prox = (atual + 1) % estados.length;
+    _aplicarVisualBotaoTese(estados[prox]);
+};
+
+function _aplicarVisualBotaoTese(chave) {
+    const btn = document.getElementById('btn-classificacao-tese');
+    const config = MAPA_TESE_ICONES[chave] || MAPA_TESE_ICONES['neutro'];
+    
+    btn.dataset.classificacao = chave;
+    btn.title = config.title;
+    btn.style.background = config.bg;
+    btn.style.borderColor = config.border;
+    btn.style.color = config.color;
+    btn.innerHTML = `<div style="width: 20px; height: 20px;">${config.icon}</div>`;
+}
 
 function abrirModalTese(topicoId, index) {
     _ideiaContextoTese = { topicoId, index };
     document.getElementById('tese-ideia-num').textContent = index + 1;
     const anotacao = topicos.find(t => t.id === topicoId).anotacoes[index];
+    
     document.getElementById('input-texto-tese').value = anotacao.tese || '';
+    // Backward Compatibility (Fallback p/ neutro)
+    _aplicarVisualBotaoTese(anotacao.teseClassificacao || 'neutro');
     
     document.getElementById('wizard-backdrop').style.display = 'block';
     document.getElementById('modal-editar-tese').style.display = 'flex';
@@ -881,9 +912,11 @@ function fecharModalTese() {
 
 function salvarTese() {
     if (!_ideiaContextoTese) return;
-    const teseTxt = document.getElementById('input-texto-tese').value.trim();
     const topico = topicos.find(t => t.id === _ideiaContextoTese.topicoId);
-    topico.anotacoes[_ideiaContextoTese.index].tese = teseTxt;
+    
+    topico.anotacoes[_ideiaContextoTese.index].tese = document.getElementById('input-texto-tese').value.trim();
+    // Evolução de Schema: Injeta a chave dinamicamente
+    topico.anotacoes[_ideiaContextoTese.index].teseClassificacao = document.getElementById('btn-classificacao-tese').dataset.classificacao; 
     
     renderizarTopicos(); salvarBackupAutomatico();
     exibirToast('Tese salva com sucesso!', 'sucesso');

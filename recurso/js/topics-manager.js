@@ -12,18 +12,41 @@ window.TopicsManager = (function () {
 
     // Observer Otimizado (Debounce de ~16ms para agrupar Recalculate Styles)
     let _layoutDebounceTimer = null;
+    let _isUpdatingLayout = false;
+    const _lastHeights = new Map(); 
+
     const resizeObserver = new ResizeObserver((entries) => {
-        clearTimeout(_layoutDebounceTimer);
-        _layoutDebounceTimer = setTimeout(() => {
-            requestAnimationFrame(() => {
-                const container = document.getElementById('timeline-container');
-                if (container) {
-                    posicionarNosDeIdeia(container);
-                    requestAnimationFrame(() => desenharConexoes());
-                }
-                // _ajustarAbasFantasmas(); // Desativado - Scroll horizontal nativo
-            });
-        }, 16); 
+        if (_isUpdatingLayout) return;
+        let needsRedraw = false;
+
+        for (const entry of entries) {
+            // Bloqueia execução em elementos ocultos (Mata o loop de backup)
+            if (entry.target.offsetParent === null) continue;
+
+            const currentHeight = Math.round(entry.contentRect.height);
+            const elementId = entry.target.id || 'unknown-element';
+            const lastHeight = _lastHeights.get(elementId) || 0;
+
+            if (currentHeight > 10 && Math.abs(currentHeight - lastHeight) > 3) {
+                _lastHeights.set(elementId, currentHeight);
+                needsRedraw = true;
+            }
+        }
+
+        if (needsRedraw) {
+            clearTimeout(_layoutDebounceTimer);
+            _layoutDebounceTimer = setTimeout(() => {
+                _isUpdatingLayout = true;
+                requestAnimationFrame(() => {
+                    const container = document.getElementById('timeline-container');
+                    if (container) {
+                        posicionarNosDeIdeia(container);
+                        desenharConexoes();
+                    }
+                    setTimeout(() => { _isUpdatingLayout = false; }, 60);
+                });
+            }, 64); 
+        }
     });
 
     // Funções Privadas do Modo de Leitura Centralizado
@@ -848,6 +871,21 @@ window.TopicsManager = (function () {
         const alignClass = isLeft ? 'align-left' : 'align-right';
         const teseViewSource = `tese:${teseAtual}`;
 
+        // BUSCA SEGURA (Fallback para 'neutro' se for backup antigo)
+        const topico = topicos.find(t => t.id === tabId);
+        const cardRef = topico.anotacoes.find(a => a.tese === teseAtual);
+        const teseClassificacao = (cardRef && cardRef.teseClassificacao) ? cardRef.teseClassificacao : 'neutro';
+
+        let iconSvgTese = '';
+        if (teseClassificacao !== 'neutro') {
+            const configMap = {
+                'autora': '<svg viewBox="0 0 24 24" fill="none" stroke="#388e3c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; transform: scaleX(-1);"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>',
+                're': '<svg viewBox="0 0 24 24" fill="none" stroke="#d32f2f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px;"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>',
+                'juizo': '<svg viewBox="0 0 24 24" fill="none" stroke="#0f253d" stroke-width="2" style="width:18px; height:18px; margin-right:6px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>'
+            };
+            iconSvgTese = configMap[teseClassificacao] || '';
+        }
+
         const gruposProcessadosNesteCard = new Set();
         const subCardsHTMLArray = [];
 
@@ -899,7 +937,7 @@ window.TopicsManager = (function () {
                 </div>
                 <div class="annotation-card" style="border-left: 4px solid ${corTema}; background-color: #ffffff; background-image: linear-gradient(${rgbaTeseFundo}, ${rgbaTeseFundo});">
                     <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
-                        <div class="hierarquia-titulo" style="color: ${corTituloTese}; font-weight: bold;">Tese: ${escaparHTML(teseAtual)}</div>
+                        <div class="hierarquia-titulo" style="color: ${corTituloTese}; font-weight: bold; display: flex; align-items: center;">${iconSvgTese} Tese: ${escaparHTML(teseAtual)}</div>
                         <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
                             <button title="Adicionar Diretriz à Tese" onclick="adicionarDiretrizEstrutural('tese', '${tabId}', '${escaparHTML(teseAtual).replace(/'/g, "\\'")}', event)">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
