@@ -49,6 +49,30 @@
     
     /* Variável da Espinha Dorsal (Vermelho sólido primário) */
     --theme-spine-line: #d32f2f;
+    
+    /* ================================================
+       NOVO: TOKENS DE IDENTIDADE DOS MÓDULOS (CONTEXT-AWARE)
+       ================================================ */
+    --module-primary: var(--trt-blue, #1a3a5c);
+    --module-border: var(--trt-blue-mid, #25527f);
+}
+
+/* Identidade: Recurso Ordinário (Amarelo Ouro) */
+body[data-module="ro"] {
+    --module-primary: #fbc02d;
+    --module-border: #f57f17;
+}
+
+/* Identidade: Embargos de Declaração (Fúcsia) */
+body[data-module="ed"] {
+    --module-primary: #D500B5;
+    --module-border: #A3008A;
+}
+
+/* Identidade: Agravo de Instrumento (Verde Lima) */
+body[data-module="ai"] {
+    --module-primary: #aeea00;
+    --module-border: #7cb342;
 }
 
 *, *::before, *::after {
@@ -70,10 +94,20 @@ body {
 body.theme-processo-white {
     --pdf-bg-color: var(--theme-bg-white);
     --pdf-marker-border: var(--theme-border-jasmine);
+    
+    /* TOKENS DE LOADING (Novos) */
+    --pdf-skeleton-bg: #eef2f7; /* Cinza gelo suave */
+    --pdf-skeleton-highlight: rgba(255, 255, 255, 0.75);
+    --pdf-skeleton-spinner: var(--trt-blue, #1a3a5c);
 }
 body.theme-processo-jasmine {
     --pdf-bg-color: var(--theme-bg-jasmine);
     --pdf-marker-border: var(--theme-border-white);
+    
+    /* TOKENS DE LOADING (Novos) - Ajustados para evitar saturação excessiva */
+    --pdf-skeleton-bg: #f2e4c6; /* Fundo âmbar suave, neutro */
+    --pdf-skeleton-highlight: rgba(255, 249, 235, 0.6); /* Brilho levemente quente */
+    --pdf-skeleton-spinner: #8d6e2f; /* Dourado escuro / Ocre para contraste elegante */
 }
 
 /* Matriz de Temas: Anotações */
@@ -766,21 +800,48 @@ body[data-active-tab="leitura"] #idea-markers-list {
     transition: all 0.05s ease-in;
 }
 
-/* =========================================================
-   TOKENS SEMÂNTICOS DE CARREGAMENTO (SKELETON & SPINNER)
-   Garante adaptação de tema entre Fundo Branco e Jasmine
-   ========================================================= */
+/* Limpeza Arquitetural: Tokens de skeleton transferidos para a matriz principal de temas acima */
 
-/* Fallback Global (Tema Branco padrão) */
-:root {
-    --pdf-skeleton-bg: #f0f4f8;
-    --pdf-skeleton-highlight: rgba(255, 255, 255, 0.7);
-    --pdf-skeleton-spinner: var(--trt-blue, #1a3a5c);
+/* ================================================
+   GPU-ACCELERATED KEYFRAMES & ACESSIBILIDADE GLOBAL
+   ================================================ */
+@keyframes pulse-ring-gpu {
+    0% { transform: scale(0.95); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
 }
 
-/* Sobrescrita dinâmica quando o Tema Jasmine está ativo no <body> */
-body.theme-processo-jasmine {
-    --pdf-skeleton-bg: #f7d99a; /* Dourado muito suave, baixo contraste com fundo */
-    --pdf-skeleton-highlight: rgba(255, 248, 225, 0.65); /* Feixe de luz quente e sutil */
-    --pdf-skeleton-spinner: #a9712a; /* Marrom sóbrio para o spinner, mantendo elegância */
+@media (prefers-reduced-motion: reduce) {
+    #active-audio-indicator::after,
+    .floating-pill-dark.alerta-prescricao::before,
+    #btn-encerrar-sessao.confirmando::after,
+    #btn-balanca-justica.is-loaded::after,
+    .sidebar-logo-container::before {
+        animation: none !important;
+        opacity: 0.6 !important;
+        transform: scale(1) !important;
+    }
+}
+
+/* OTIMIZAÇÃO: Botão Encerrar Sessão (GPU) */
+#btn-encerrar-sessao.confirmando {
+    animation: none !important;
+    position: relative;
+    overflow: visible;
+}
+#btn-encerrar-sessao.confirmando::after {
+    content: ''; position: absolute; inset: 0;
+    border-radius: inherit;
+    border: 2px solid rgba(239, 83, 80, 0.6);
+    animation: pulse-ring-gpu 0.9s infinite ease-out;
+    pointer-events: none;
+}
+
+/* OTIMIZAÇÃO: Botão Balança (GPU) */
+#btn-balanca-justica.is-loaded { animation: none !important; position: relative; }
+#btn-balanca-justica.is-loaded::after {
+    content: ''; position: absolute; inset: 0;
+    border-radius: inherit;
+    border: 2px solid #fbc02d;
+    animation: pulse-ring-gpu 0.5s ease-out forwards;
+    pointer-events: none;
 }
