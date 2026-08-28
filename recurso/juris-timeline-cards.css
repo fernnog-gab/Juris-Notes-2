@@ -1594,6 +1594,11 @@
     box-shadow: 0 2px 6px rgba(15, 37, 61, 0.4);
 }
 
+.tese-icon-circle.tese-juizo svg {
+    width: 15px;
+    height: 15px;
+}
+
 .tese-icon-circle.tese-neutro {
     background-color: transparent;
     color: #94a3b8;
