@@ -5,6 +5,9 @@
 window.TopicsManager = (function () {
     'use strict';
 
+    const romanoCache = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV","XVI","XVII","XVIII","XIX","XX"];
+    function obterRomano(idx) { return romanoCache[idx] || String(idx + 1); }
+
     // NOVA CAMADA DE CONFIGURAÇÃO: Dicionário Centralizado de Interface (AI)
     const AI_UI_LABELS = {
         alegacao: {
@@ -53,14 +56,19 @@ window.TopicsManager = (function () {
     function renderizarMarkdownSeguro(strEscapada) {
         if (!strEscapada) return '';
         let processado = strEscapada;
-        
-        // FIX: [\s\S]*? engloba quebras de linha (\n)
+
         processado = processado.replace(/\*\*([\s\S]*?)\*\*/g, '<b>$1</b>');
-        
-        // NOVA SINTAXE: Renderização de Tipografia
-        processado = processado.replace(/\[\[size:1\]\]([\s\S]*?)\[\[\/size\]\]/g, '<span class="txt-largo-1">$1</span>');
-        processado = processado.replace(/\[\[size:2\]\]([\s\S]*?)\[\[\/size\]\]/g, '<span class="txt-largo-2">$1</span>');
-        
+        processado = processado.replace(/\*([\s\S]*?)\*/g, '<i>$1</i>');
+        processado = processado.replace(/\[\[u\]\]([\s\S]*?)\[\[\/u\]\]/g, '<u>$1</u>');
+
+        // Estilo inline embutido junto da classe: a classe cuida da tela,
+        // o "style" garante que o Google Docs (que não enxerga seu CSS)
+        // preserve o tamanho ao colar.
+        processado = processado.replace(/\[\[size:1\]\]([\s\S]*?)\[\[\/size\]\]/g,
+            '<span class="txt-largo-1" style="font-size:1.15em;">$1</span>');
+        processado = processado.replace(/\[\[size:2\]\]([\s\S]*?)\[\[\/size\]\]/g,
+            '<span class="txt-largo-2" style="font-size:1.3em;">$1</span>');
+
         return processado;
     }
 
@@ -136,70 +144,68 @@ window.TopicsManager = (function () {
         }, 16); 
     });
 
-    // Funções Privadas do Zen Mode
-    function _ativarZenMode(card) {
-        const item = card.closest('.sub-annotation-item') || card.closest('.main-card-wrapper');
-        const contentArea = document.getElementById('topics-tab-content');
-        if (!contentArea || !item) return;
+    // Funções Privadas do Modo de Leitura Centralizado
+    let _textoLeituraAtualMarkdown = "";
+    let _textoLeituraAtualHTML = "";
 
-        contentArea.classList.add('zen-mode-ativo');
-        item.classList.add('is-zen-focused');
-        card.classList.add('zen-focused');
+    function abrirModoLeitura(btn) {
+        const textoOriginal = btn.dataset.rawText || '';
+        const tituloOriginal = btn.dataset.rawTitle || 'Anotação';
 
-        // Scroll seguro baseado no `#history-container` nativo
-        const scrollContainer = document.getElementById('history-container');
-        if (scrollContainer) {
-            setTimeout(() => {
-                const containerRect = scrollContainer.getBoundingClientRect();
-                const cardRect = card.getBoundingClientRect();
-                const offset = (cardRect.top - containerRect.top) + scrollContainer.scrollTop 
-                               - (scrollContainer.clientHeight / 2) + (cardRect.height / 2);
-                scrollContainer.scrollTo({ top: offset, behavior: 'smooth' });
-            }, 100);
-        }
+        const modal = document.getElementById('reading-mode-modal');
+        const backdrop = document.getElementById('reading-mode-backdrop');
+        const tituloEl = document.getElementById('reading-mode-title-text');
+        const conteudoEl = document.getElementById('reading-mode-content');
+        if (!modal || !backdrop || !tituloEl || !conteudoEl) return;
+
+        _textoLeituraAtualMarkdown = textoOriginal;
+        _textoLeituraAtualHTML = renderizarMarkdownSeguro(escaparHTML(textoOriginal));
+
+        tituloEl.textContent = tituloOriginal;
+        conteudoEl.innerHTML = _textoLeituraAtualHTML.replace(/\n/g, '<br>');
+
+        backdrop.style.display = 'block';
+        modal.style.display = 'flex';
     }
 
-    function _fecharZenModeAtivo() {
-        const contentArea = document.getElementById('topics-tab-content');
-        if (!contentArea) return;
-
-        contentArea.classList.remove('zen-mode-ativo');
-        document.querySelectorAll('.is-zen-focused').forEach(el => el.classList.remove('is-zen-focused'));
-        document.querySelectorAll('.zen-focused').forEach(el => {
-            el.classList.remove('zen-focused');
-            const btn = el.querySelector('.btn-expand-text');
-            const txt = el.querySelector('.sub-text-content, .card-texto');
-            if (txt && txt.classList.contains('expanded')) {
-                txt.classList.remove('expanded');
-                if (btn) btn.innerHTML = 'Ler texto completo ▾';
-            }
-        });
+    function fecharModoLeitura() {
+        const modal = document.getElementById('reading-mode-modal');
+        const backdrop = document.getElementById('reading-mode-backdrop');
+        if (modal) modal.style.display = 'none';
+        if (backdrop) backdrop.style.display = 'none';
     }
 
-    // Heurística de Saída Rápida (Teclado)
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && document.querySelector('.zen-focused')) {
-            _fecharZenModeAtivo();
-            requestAnimationFrame(() => {
-                const container = document.getElementById('timeline-container');
-                if (container) requestAnimationFrame(() => _sincronizarConexoesComAnimacao(container));
-            });
+        const modal = document.getElementById('reading-mode-modal');
+        if (e.key === 'Escape' && modal && modal.style.display === 'flex') {
+            fecharModoLeitura();
         }
     });
 
-    document.addEventListener('click', (e) => {
-        const contentArea = document.getElementById('topics-tab-content');
-        if (contentArea && contentArea.classList.contains('zen-mode-ativo')) {
-            // Se o clique não foi dentro de NENHUM container em foco, nem no botão que aciona o foco
-            if (!e.target.closest('.is-zen-focused') && !e.target.closest('.btn-expand-text')) {
-                _fecharZenModeAtivo();
-                requestAnimationFrame(() => {
-                    const container = document.getElementById('timeline-container');
-                    if (container) _sincronizarConexoesComAnimacao(container);
-                });
+    async function copiarTextoModoLeitura() {
+        const paragrafosHtml = _textoLeituraAtualHTML
+            .split('\n')
+            .filter(linha => linha.trim() !== '')
+            .map(linha => `<p>${linha}</p>`)
+            .join('');
+
+        try {
+            const clipboardItem = new ClipboardItem({
+                'text/plain': new Blob([_textoLeituraAtualMarkdown], { type: 'text/plain' }),
+                'text/html': new Blob([paragrafosHtml], { type: 'text/html' })
+            });
+            await navigator.clipboard.write([clipboardItem]);
+            exibirToast('Texto copiado com formatação inteligente!', 'sucesso');
+        } catch (err) {
+            console.warn('Fallback de cópia acionado:', err);
+            try {
+                await navigator.clipboard.writeText(_textoLeituraAtualMarkdown);
+                exibirToast('Texto copiado (Modo Básico).', 'info');
+            } catch (err2) {
+                exibirToast('Não foi possível copiar automaticamente.', 'erro');
             }
         }
-    });
+    }
 
     function _gerarBtnRevisaoHtml(topicoId, parentIndex, viewSource, localIndex, intencao, isRevisada) {
         if (intencao !== 'nota') return '';
@@ -215,6 +221,70 @@ window.TopicsManager = (function () {
                 onclick="toggleRevisaoNotaOculta('${topicoId}', ${safeParentIdx}, '${safeViewSource}', ${localIndex}, event)">
                 ${isRevisada ? svgRevisada : svgPendente}
                 </button>`;
+    }
+
+    // --- FÁBRICA DE COMPONENTES: PILHA (GRUPO DE IDEIAS) - TEMA AGRAVO ---
+    function _obterTextosDaPilha(topico, grupoId) {
+        if (!topico) return "";
+        let textos = [];
+        
+        const extrair = (arr) => {
+            if (!arr) return;
+            arr.forEach(s => {
+                if (s.grupoId === grupoId && s.texto && s.texto.trim() !== '') {
+                    textos.push(s.texto.trim());
+                }
+            });
+        };
+
+        topico.anotacoes.forEach(an => {
+            extrair(an.subAnotacoes);
+            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => extrair(ic.subAnotacoes));
+        });
+        extrair(topico.diretrizesGlobais);
+        // Específico do Painel de Agravo: diretrizesPorObice
+        if (topico.diretrizesPorObice) Object.values(topico.diretrizesPorObice).forEach(arr => extrair(arr));
+
+        return textos.join(' - ');
+    }
+
+    function _gerarHtmlPilha(sub, renderContext, activeTabId) {
+        if (!renderContext) return '';
+        if (!renderContext.romanMap.has(sub.grupoId)) {
+            renderContext.romanMap.set(sub.grupoId, obterRomano(renderContext.romanCounter++));
+        }
+        const numRomano = renderContext.romanMap.get(sub.grupoId);
+        
+        const topico = topicos.find(t => t.id === activeTabId);
+        const teorAutomatico = _obterTextosDaPilha(topico, sub.grupoId);
+        
+        const tituloPilha = sub.grupoTitulo || "📚 Grupo de Ideias";
+        const descPilha = sub.grupoDescricao || (teorAutomatico !== "" ? teorAutomatico : "Nós vazios.");
+        const source = sub.viewSource || 'main';
+
+        return `
+        <div class="sub-annotation-item sub-stack-wrapper" data-source="${source}">
+            <div class="sub-annotation-card sub-annotation-stack tema-agravo">
+                <div class="stack-roman-badge" title="Desagrupar Pilha" onclick="TopicsManager.desagruparPilha('${activeTabId}', '${sub.grupoId}')">
+                    ${numRomano}
+                </div>
+                
+                <div class="pilha-editavel" title="Clique para editar metadados" onclick="TopicsManager.abrirModalPilha('${activeTabId}', '${sub.grupoId}')">
+                    ${escaparHTML(tituloPilha)}
+                </div>
+                
+                <div class="pilha-editavel pilha-editavel-desc" title="Clique para editar metadados" onclick="TopicsManager.abrirModalPilha('${activeTabId}', '${sub.grupoId}')">
+                    ${renderizarMarkdownSeguro(escaparHTML(descPilha)).replace(/\n/g, '<br>')}
+                </div>
+                
+                <button class="btn-leitura-flutuante btn-leitura-pilha" title="Modo Leitura do Grupo" onclick="TopicsManager.abrirModoLeituraPilha('${activeTabId}', '${sub.grupoId}', '${numRomano}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>`;
     }
 
     let activeTabId = null;
@@ -316,66 +386,89 @@ window.TopicsManager = (function () {
 
     // Função estática gerarSVGConector removida (substituída pelo motor dinâmico desenharConexoes)
 
+    /**
+     * FÁBRICA UNIFICADA DE SUB-NÓS (Nós de Ideia e Diretrizes)
+     * Centraliza a renderização eliminando duplicação de templates e garantindo SSOT.
+     */
+    function _gerarTemplateSubNo(sub, idx, ctx) {
+        const intencao = sub.intencao || 'premissa';
+        const isHasIntent = true; 
+        const subIconSVG = obterIconeIntencao(intencao);
+        
+        const badgeClass = isHasIntent ? `sub-badge has-intent intencao-${intencao}` : 'sub-badge';
+        const label = isHasIntent ? `${subIconSVG} ${ctx.prefixoBadge}${ctx.usarLetra ? gerarLetra(idx) : (idx + 1)}` : `${ctx.prefixoBadge}${ctx.usarLetra ? gerarLetra(idx) : (idx + 1)}`;
+        
+        const textoFormatado = renderizarMarkdownSeguro(escaparHTML(sub.texto));
+        const isRevisada = sub.revisada === true;
+        const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
+        
+        const clickSubMenu = ctx.parentIndex === null 
+            ? `abrirMenuSubAnotacao('${ctx.topicoId}', null, '${ctx.viewSource.replace(/'/g, "\\'")}', ${sub.localIndex}, event)`
+            : `abrirMenuSubAnotacao('${ctx.topicoId}', '${ctx.parentIndex}', '${ctx.viewSource}', ${sub.localIndex}, event)`;
+
+        const classBorda = ctx.bordaClass ? ` ${ctx.bordaClass}` : '';
+        const classFase = ctx.bordaFaseClass ? ` ${ctx.bordaFaseClass}` : '';
+        const styleAttr = ctx.bordaStyle ? ` style="${ctx.bordaStyle}"` : '';
+
+        return `
+            <div class="${itemWrapperClass}" data-source="${ctx.viewSource}">
+                <div class="sub-annotation-card${classFase}${classBorda}"${styleAttr}>
+                    <div class="${badgeClass}"
+                         title="Opções deste nó/diretriz"
+                         onclick="${clickSubMenu}">
+                        ${label}
+                    </div>
+                    <div class="sub-text-content">${textoFormatado}</div>
+                    
+                    <button class="btn-leitura-flutuante" aria-label="Abrir modo leitura" data-raw-text="${escaparHTML(sub.texto)}" data-raw-title="${escaparHTML(ctx.tituloLeitura)}" onclick="TopicsManager.abrirModoLeitura(this)" title="Abrir no Modo Leitura (Tela Cheia)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                        </svg>
+                    </button>
+                    
+                    <button class="btn-copiar-zen" aria-label="Copiar texto bruto" onclick="navigator.clipboard.writeText('${escaparHTML(sub.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto para a área de transferência">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copiar Trecho
+                    </button>
+                    
+                    ${_gerarBtnRevisaoHtml(ctx.topicoId, ctx.parentIndex === null ? null : parseInt(ctx.parentIndex, 10), ctx.viewSource, sub.localIndex, intencao, isRevisada)}
+                </div>
+            </div>`;
+    }
+
     // NOVO HELPER: Extraído de criarCard para suportar reaproveitamento
-    function _gerarCartoesSubAnotacao(arrayDeNos, faseDoCardBase, activeTabId, topicoIndex) {
+    function _gerarCartoesSubAnotacao(arrayDeNos, faseDoCardBase, activeTabId, topicoIndex, renderContext) {
         if (!arrayDeNos || arrayDeNos.length === 0) return '';
         
-        const subCardsHTML = arrayDeNos.map((sub, sIdx) => {
-            const intencao = sub.intencao || 'premissa';
-            let iconSVG = '';
-
-            if (intencao === 'comando') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>`;
-            } else if (intencao === 'texto') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
-            } else if (intencao === 'nota') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
-            } else if (intencao === 'premissa') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`;
-            } else if (intencao === 'fundamentacao') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`;
-            } else if (intencao === 'alegacao') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
-            } else if (intencao === 'fundamento_sentenca') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16M4 2h16M6 6v12M10 6v12M14 6v12M18 6v12M2 6h20"></path></svg>`;
-            } else if (intencao === 'refutacao') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>`;
-            } else if (intencao === 'preliminar') {
-                iconSVG = `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
-            }
-
-            const label = `${iconSVG} ${sIdx + 1}.${gerarLetra(sIdx)}`;
-            const textoFormatado = renderizarMarkdownSeguro(escaparHTML(sub.texto));
-            const badgeClass = `sub-badge has-intent intencao-${intencao}`;
-            
+        const subCardsHTMLArray = [];
+        const gruposProcessadosNesteCard = new Set();
+        
+        arrayDeNos.forEach((sub, sIdx) => {
             const bordaFaseClass = faseDoCardBase === 0 ? 'borda-fase-ai-diretriz' : `borda-fase-${faseDoCardBase}`;
 
-            const isNotaInterna = intencao === 'nota';
-            const isRevisada = sub.revisada === true;
-            const itemWrapperClass = isNotaInterna ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : `sub-annotation-item`;
+            // 1. NÓS SOLTOS
+            if (!sub.grupoId) {
+                subCardsHTMLArray.push(_gerarTemplateSubNo(sub, sIdx, {
+                    topicoId: activeTabId,
+                    parentIndex: topicoIndex,
+                    viewSource: sub.viewSource,
+                    bordaFaseClass: bordaFaseClass,
+                    prefixoBadge: `${sIdx + 1}.`,
+                    usarLetra: true,
+                    tituloLeitura: 'Nó de Ideia'
+                }));
+            } 
+            // 2. NÓS AGRUPADOS (A PILHA)
+            else {
+                if (!gruposProcessadosNesteCard.has(sub.grupoId)) {
+                    gruposProcessadosNesteCard.add(sub.grupoId);
+                    subCardsHTMLArray.push(_gerarHtmlPilha(sub, renderContext, activeTabId));
+                }
+            }
+        });
 
-            return `
-                <div class="${itemWrapperClass}" data-source="${sub.viewSource}">
-                    <div class="sub-annotation-card ${bordaFaseClass}">
-                        <div class="${badgeClass}"
-                             title="Opções desta diretriz"
-                             onclick="abrirMenuSubAnotacao('${activeTabId}', '${topicoIndex}', '${sub.viewSource}', ${sub.localIndex}, event)">
-                            ${label}
-                        </div>
-                        <div class="sub-text-content">${textoFormatado}</div>
-                        <button class="btn-expand-text" style="display:none;" onclick="TopicsManager.toggleTextExpansion(this)">
-                            Ler texto completo ▾
-                        </button>
-                        <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(sub.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto para a área de transferência">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            Copiar Trecho
-                        </button>
-                        ${_gerarBtnRevisaoHtml(activeTabId, topicoIndex, sub.viewSource, sub.localIndex, intencao, isRevisada)}
-                    </div>
-                </div>`;
-        }).join('');
-
-        return `<div class="sub-annotations-wrapper">${subCardsHTML}</div>`;
+        return `<div class="sub-annotations-wrapper">${subCardsHTMLArray.join('')}</div>`;
     }
 
     /**
@@ -384,7 +477,7 @@ window.TopicsManager = (function () {
      * Os três fragmentos são irmãos diretos no .timeline-container,
      * garantindo que align-self funcione corretamente nas sub-anotações.
      */
-    function criarCard(anotacao, index, arr) {
+    function criarCard(anotacao, index, arr, renderContext) {
         const total    = arr.length;
         const numero   = index + 1;
         const tagClass = poloParaClasse(anotacao.polo);
@@ -397,9 +490,6 @@ window.TopicsManager = (function () {
             htmlConteudo = `
             <div style="position: relative;">
                 <p class="card-texto">"${renderizarMarkdownSeguro(escaparHTML(anotacao.conteudo))}"</p>
-                <button class="btn-expand-text" style="display:none;" onclick="TopicsManager.toggleTextExpansion(this)">
-                    Ler texto completo ▾
-                </button>
             </div>`;
             if (anotacao.comentario) htmlComentario = `<div class="card-comentario"><strong>Observação:</strong> ${escaparHTML(anotacao.comentario)}</div>`;
         } else if (anotacao.tipo === 'imagem') {
@@ -436,21 +526,25 @@ window.TopicsManager = (function () {
         }
 
         function gerarBarraAcoes(isCorrelacionado, cIdx) {
-            // Injeção segura do cIdx no contexto do botão (resolve o bug da falta de índice)
+            // Utiliza o escopo léxico para obter o item real de forma segura
+            const itemReal = isCorrelacionado && cIdx != null ? anotacao.itensCorrelacionados[cIdx] : anotacao;
             const ctxCidx = isCorrelacionado && cIdx != null ? `, cIdx: ${cIdx}` : '';
+            const tipoDoItem = itemReal.tipo;
             
-            // Verifica o tipo do item na hierarquia correta (principal vs correlacionado)
-            const tipoDoItem = isCorrelacionado && cIdx != null ? anotacao.itensCorrelacionados[cIdx].tipo : anotacao.tipo;
-            
-            // Direciona para a função de edição adequada
             const acaoEditar = isCorrelacionado ? 'editarItemCorrelacionado()' : 'editarAnotacao()';
+            const paramMove = isCorrelacionado ? `'${activeTabId}', ${index}, ${cIdx}` : `'${activeTabId}', ${index}, null`;
             
             const btnEditar = tipoDoItem === 'texto' ? `<button title="Editar Texto" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}${ctxCidx}}; ${acaoEditar}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>` : '';
             
-            const paramMove = isCorrelacionado ? `'${activeTabId}', ${index}, ${cIdx}` : `'${activeTabId}', ${index}, null`;
-            
+            // NOVO: Renderiza botão apenas se for tipo texto. Variáveis tratadas para não quebrar o DOM.
+            const btnLeitura = tipoDoItem === 'texto' ? `
+                <button title="Modo Leitura" onclick="TopicsManager.abrirModoLeitura(this)" data-raw-text="${escaparHTML(itemReal.conteudo)}" data-raw-title="${escaparHTML(itemReal.documento || itemReal.polo || 'Anotação')}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                </button>` : '';
+
             return `
             <div class="card-actions-bar">
+                ${btnLeitura}
                 ${btnEditar}
                 <button title="Adicionar Nó de Ideia" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:${index}${ctxCidx}}; acionarNovoNoIdeia()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
                 <button title="Mover / Reordenar" onclick="abrirModalSmartMove(${paramMove})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><polyline points="8 7 12 3 16 7"></polyline><line x1="12" y1="12" x2="12" y2="3"></line></svg></button>
@@ -479,7 +573,7 @@ window.TopicsManager = (function () {
         }
 
         if (flatSubAnotacoes.length > 0) {
-            htmlSubAnotacoes = _gerarCartoesSubAnotacao(flatSubAnotacoes, faseDoCard, activeTabId, index);
+            htmlSubAnotacoes = _gerarCartoesSubAnotacao(flatSubAnotacoes, faseDoCard, activeTabId, index, renderContext);
         }
 
         // NOVO: Processar itens agrupados
@@ -496,9 +590,6 @@ window.TopicsManager = (function () {
                     cConteudo = `
                     <div style="position: relative;">
                         <p class="card-texto">"${renderizarMarkdownSeguro(escaparHTML(item.conteudo))}"</p>
-                        <button class="btn-expand-text" style="display:none;" onclick="TopicsManager.toggleTextExpansion(this)">
-                            Ler texto completo ▾
-                        </button>
                     </div>`;
                     if (item.comentario) cComent = `<div class="card-comentario"><strong>Observação:</strong> ${escaparHTML(item.comentario)}</div>`;
                 } else if (item.tipo === 'imagem') {
@@ -634,6 +725,83 @@ window.TopicsManager = (function () {
         listContainer.appendChild(fragment);
     }
 
+    function obterIconeIntencao(intencao) {
+        if (intencao === 'comando') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>`;
+        if (intencao === 'texto') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+        if (intencao === 'nota') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+        if (intencao === 'fundamentacao') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`;
+        if (intencao === 'refutacao') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>`;
+        if (intencao === 'preliminar') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+        return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`; // premissa
+    }
+
+    /**
+     * Componente Dinâmico: Gera o Card de Óbice hierárquico.
+     * Alinha-se automaticamente à paridade do índice global acumulado
+     * de anotações — não a um número fixo de grupo. Se o Óbice anterior
+     * acumulou um número ímpar de cards, este nasce à direita, e vice-versa.
+     */
+    function _gerarHtmlObiceGroup(teseAtual, diretrizes, tabId, corTema, indexGlobal, renderContext) {
+        const rgbaTeseFundo = hexToRgba(corTema, 0.15);
+        const rgbaTeseBorda = hexToRgba(corTema, 0.4);
+        const corTituloTese = escurecerCor(corTema, 0.6);
+        const corTextoTese = obterCorContraste(corTema);
+
+        const isLeft = (indexGlobal % 2 === 0);
+        const alignClass = isLeft ? 'align-left' : 'align-right';
+        const teseViewSource = `obice:${teseAtual}`;
+        const idObiceSeguro = teseAtual.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_');
+        const tituloContexto = `Diretriz do Óbice: ${teseAtual}`;
+
+        const subCardsHTMLArray = [];
+        const gruposProcessadosNesteCard = new Set();
+
+        diretrizes.forEach((d, sIdx) => {
+            // Shallow Copy Segura
+            const dRender = { ...d, viewSource: teseViewSource, localIndex: sIdx };
+
+            if (!dRender.grupoId) {
+                subCardsHTMLArray.push(_gerarTemplateSubNo(dRender, sIdx, {
+                    topicoId: tabId,
+                    parentIndex: null,
+                    viewSource: teseViewSource,
+                    bordaStyle: `border-left: 5px solid ${corTema}; border-color: ${rgbaTeseBorda};`,
+                    prefixoBadge: 'D.',
+                    usarLetra: false,
+                    tituloLeitura: tituloContexto
+                }));
+            } else {
+                if (!gruposProcessadosNesteCard.has(dRender.grupoId)) {
+                    gruposProcessadosNesteCard.add(dRender.grupoId);
+                    subCardsHTMLArray.push(_gerarHtmlPilha(dRender, renderContext, tabId));
+                }
+            }
+        });
+        const tesesHtml = subCardsHTMLArray.join('');
+
+        return `
+        <div class="timeline-item-master ${alignClass} nivel-hierarquico nivel-tese" id="timeline-wrapper-obice-${idObiceSeguro}">
+            <div class="main-card-wrapper" data-cidx="main">
+                <div class="annotation-number-area">
+                    <div class="timeline-icon-box" style="background-color: ${corTema}; color: ${corTextoTese};" title="Óbice de Admissibilidade">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle></svg>
+                    </div>
+                </div>
+                <div class="annotation-card" style="border-left: 4px solid ${corTema}; background-color: #ffffff; background-image: linear-gradient(${rgbaTeseFundo}, ${rgbaTeseFundo});">
+                    <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
+                        <div class="hierarquia-titulo" style="color: ${corTituloTese};">Óbice: ${escaparHTML(teseAtual)}</div>
+                        <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
+                            <button title="Adicionar Diretriz ao Óbice" onclick="_menuAnotacaoCtx={topicoId:'${tabId}', index:'${teseViewSource.replace(/'/g, "\\'")}'}; acionarNovoNoIdeia()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="sub-annotations-wrapper">${tesesHtml}</div>
+        </div>`;
+    }
+
     /**
      * Re-renderiza o fichário inteiro.
      */
@@ -661,27 +829,29 @@ window.TopicsManager = (function () {
             activeTabId = topicosArray[0].id;
         }
 
-        // 1. Construir as abas do fichário
+        // Cache do scroll atual antes da destruição
+        const scrollAnterior = headerEl.scrollLeft;
+        let abaAtivaNode = null;
+
+        // 1. Construir as abas do fichário (Mais recentes à esquerda)
         headerEl.innerHTML = '';
-        topicosArray.forEach(topico => {
+        [...topicosArray].reverse().forEach(topico => {
             const isActive = topico.id === activeTabId;
             const btn      = document.createElement('div');
 
             btn.className        = `topic-tab-btn ${isActive ? 'active' : ''}`;
-            btn.textContent      = topico.nome;
             btn.title            = topico.nome; 
-            btn.style.backgroundColor = topico.cor;
+            
+            // Injeção declarativa de variáveis CSS (Aba ganha inteligência via CSS)
+            const corContraste = obterCorContraste(topico.cor);
+            btn.style.setProperty('--tab-bg', topico.cor);
+            btn.style.setProperty('--tab-color', corContraste);
 
-            if (isActive) {
-                btn.style.border = `3px solid ${escurecerCor(topico.cor)}`;
-                btn.style.borderBottom = 'none';
-                btn.style.color = escurecerCor(topico.cor, 0.4);
-                contentEl.style.borderTop = `3px solid ${escurecerCor(topico.cor)}`;
-            } else {
-                btn.style.border = '1px solid #dde3ea';
-                btn.style.borderBottom = 'none';
-                btn.style.color = '#555';
-            }
+            // Encapsulamento da label para o ellipsis funcionar perfeitamente
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'tab-label';
+            labelSpan.textContent = topico.nome;
+            btn.appendChild(labelSpan);
 
             btn.onclick = () => {
                 activeTabId = topico.id;
@@ -689,6 +859,9 @@ window.TopicsManager = (function () {
             };
 
             headerEl.appendChild(btn);
+            
+            // Captura o node para centralizar a visão nele após o render
+            if (isActive) abaAtivaNode = btn;
         });
 
         // 2. Construir o conteúdo do tópico ativo
@@ -697,6 +870,17 @@ window.TopicsManager = (function () {
 
         _activeTopicoCor = topicoAtivo.cor;
         const corTextoTese = obterCorContraste(_activeTopicoCor);
+        
+        // Transmite a cor da aba ativa para a borda superior do conteúdo (escurecendo levemente)
+        contentEl.style.setProperty('--active-tab-color', escurecerCor(_activeTopicoCor));
+
+        // Restauração do estado de scroll após o paint do DOM
+        requestAnimationFrame(() => {
+            headerEl.scrollLeft = scrollAnterior;
+            if (abaAtivaNode) {
+                abaAtivaNode.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            }
+        });
 
         // NOVO: Painel Preâmbulo Estático gerado incondicionalmente
         const preambleHtml = `
@@ -738,16 +922,6 @@ window.TopicsManager = (function () {
         // =========================================================
         // RENDERIZAÇÃO LIMPA: DIRETRIZES E CARDS (Padrão RO adaptado para AI)
         // =========================================================
-
-        function obterIconeIntencao(intencao) {
-            if (intencao === 'comando') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>`;
-            if (intencao === 'texto') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
-            if (intencao === 'nota') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
-            if (intencao === 'fundamentacao') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`;
-            if (intencao === 'refutacao') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>`;
-            if (intencao === 'preliminar') return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
-            return `<svg class="intencao-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`; // premissa
-        }
 
         let conteudoCentralHtml = '';
 
@@ -828,75 +1002,38 @@ window.TopicsManager = (function () {
             let cardsHTML = '';
             let ultimaTeseRenderizada = null;
 
-            // 1. LOOP DE PROVAS E DIRETRIZES POR ÓBICE (TESE)
-            topicoAtivo.anotacoes.forEach((an, index) => {
-                const teseAtual = an.tese || "Óbice Não Nomeado"; 
-                
-                if (teseAtual !== ultimaTeseRenderizada && teseAtual !== "Óbice Não Nomeado") {
-                    const diretrizes = (topicoAtivo.diretrizesPorObice && topicoAtivo.diretrizesPorObice[teseAtual]) ? topicoAtivo.diretrizesPorObice[teseAtual] : [];
-                    const teseViewSource = `obice:${teseAtual}`;
-                    const idObiceSeguro = teseAtual.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_');
-                    
-                    // --- ARQUITETURA DINÂMICA DE CORES (Igual RO/ED) ---
-                    const rgbaTeseFundo = hexToRgba(_activeTopicoCor, 0.15);
-                    const rgbaTeseBorda = hexToRgba(_activeTopicoCor, 0.4);
-                    const corTituloTese = escurecerCor(_activeTopicoCor, 0.6);
-                    
-                    const tesesHtml = diretrizes.map((d, sIdx) => {
-                        const intencao = d.intencao || 'premissa';
-                        const iconSVG = obterIconeIntencao(intencao);
-                        const isRevisada = d.revisada === true;
-                        const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
-                        return `
-                        <div class="${itemWrapperClass}" data-source="${teseViewSource}">
-                            <!-- NÓ DINÂMICO COM A COR DA ABA -->
-                            <div class="sub-annotation-card" style="border-left: 5px solid ${_activeTopicoCor}; border-color: ${rgbaTeseBorda};">
-                                <div class="sub-badge has-intent intencao-${intencao}" 
-                                     title="Opções desta diretriz"
-                                     onclick="abrirMenuSubAnotacao('${activeTabId}', '${teseViewSource.replace(/'/g, "\\'")}', '${teseViewSource.replace(/'/g, "\\'")}', ${sIdx}, event)">
-                                     ${iconSVG} D.${sIdx + 1}
-                                </div>
-                                <div class="sub-text-content">${renderizarMarkdownSeguro(escaparHTML(d.texto))}</div>
-                                <button class="btn-expand-text" style="display:none;" onclick="TopicsManager.toggleTextExpansion(this)">
-                                    Ler texto completo ▾
-                                </button>
-                                <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(d.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto para a área de transferência">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                    Copiar Trecho
-                                </button>
-                                ${_gerarBtnRevisaoHtml(activeTabId, null, teseViewSource, sIdx, intencao, isRevisada)}
-                            </div>
-                        </div>`;
-                    }).join('');
+            // Injeta o contexto de renderização isolado para a aba
+            const renderContext = {
+                romanCounter: 0,
+                romanMap: new Map() // Mapeia grupoId -> Numeral Romano
+            };
 
-                    cardsHTML += `
-                    <div class="timeline-item-master align-left nivel-hierarquico nivel-tese" id="timeline-wrapper-obice-${idObiceSeguro}">
-                        <div class="main-card-wrapper" data-cidx="main">
-                            <div class="annotation-number-area">
-                                <!-- ÍCONE DINÂMICO -->
-                                <div class="timeline-icon-box" style="background-color: ${_activeTopicoCor}; color: ${corTextoTese};" title="Óbice de Admissibilidade">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle></svg>
-                                </div>
-                            </div>
-                            <!-- CARD DINÂMICO COM TRUQUE DE FUNDO SÓLIDO -->
-                            <div class="annotation-card" style="border-left: 4px solid ${_activeTopicoCor}; background-color: #ffffff; background-image: linear-gradient(${rgbaTeseFundo}, ${rgbaTeseFundo});">
-                                <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
-                                    <div class="hierarquia-titulo" style="color: ${corTituloTese};">Óbice: ${escaparHTML(teseAtual)}</div>
-                                    <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
-                                        <button title="Adicionar Diretriz ao Óbice" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:'${teseViewSource.replace(/'/g, "\\'")}'}; acionarNovoNoIdeia()">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="sub-annotations-wrapper">${tesesHtml}</div>
-                    </div>`;
+            // 1. LOOP DE PROVAS E DIRETRIZES POR ÓBICE (TESE) - Ocultação Segura
+            topicoAtivo.anotacoes.forEach((an, index) => {
+                // 1. Busca os dados de forma segura (preserva notas já criadas)
+                const chaveObiceCrua = an.tese || "Óbice Não Nomeado"; 
+                const diretrizes = (topicoAtivo.diretrizesPorObice && topicoAtivo.diretrizesPorObice[chaveObiceCrua]) 
+                                    ? topicoAtivo.diretrizesPorObice[chaveObiceCrua] 
+                                    : [];
+                
+                // 2. Verifica se o usuário de fato escreveu um óbice/tese
+                const isObicePreenchido = (an.tese && an.tese.trim() !== '');
+
+                // 3. Se houver quebra de grupo (novo grupo de provas)
+                if (chaveObiceCrua !== ultimaTeseRenderizada) {
                     
-                    ultimaTeseRenderizada = teseAtual;
+                    // 4. Ocultação Segura: Só desenha o card se o óbice tiver nome OU se houver notas salvas nele
+                    if (isObicePreenchido || diretrizes.length > 0) {
+                        const tituloExibicao = isObicePreenchido ? an.tese : "Óbice Não Nomeado";
+                        cardsHTML += _gerarHtmlObiceGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index, renderContext);
+                    }
+                    
+                    // Atualiza a referência do agrupamento atual
+                    ultimaTeseRenderizada = chaveObiceCrua;
                 }
                 
-                cardsHTML += criarCard(an, index, topicoAtivo.anotacoes);
+                // Desenha o card da prova e o número colorido exatamente como antes (Intocado)
+                cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
             });
             
             // 2. RENDERIZAÇÃO INCONDICIONAL: DIRETRIZES GLOBAIS (TOPO)
@@ -904,32 +1041,31 @@ window.TopicsManager = (function () {
             let globaisHtml = ''; 
 
             if (topicoAtivo.diretrizesGlobais && topicoAtivo.diretrizesGlobais.length > 0) {
-                globaisHtml = topicoAtivo.diretrizesGlobais.map((d, sIdx) => {
-                    const intencao = d.intencao || 'premissa';
-                    const iconSVG = obterIconeIntencao(intencao);
-                    const isRevisada = d.revisada === true;
-                    const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
-                    return `
-                    <div class="${itemWrapperClass}" data-source="global">
-                        <!-- APLICA A CLASSE DE BORDA ESCURA DA DIRETRIZ GLOBAL -->
-                        <div class="sub-annotation-card borda-global">
-                            <div class="sub-badge has-intent intencao-${intencao}" 
-                                 title="Opções desta diretriz"
-                                 onclick="abrirMenuSubAnotacao('${activeTabId}', 'global', 'global', ${sIdx}, event)">
-                                 ${iconSVG} G.${sIdx + 1}
-                            </div>
-                            <div class="sub-text-content">${renderizarMarkdownSeguro(escaparHTML(d.texto))}</div>
-                            <button class="btn-expand-text" style="display:none;" onclick="TopicsManager.toggleTextExpansion(this)">
-                                Ler texto completo ▾
-                            </button>
-                            <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(d.texto).replace(/'/g, "\\'")}')" title="Copiar texto bruto para a área de transferência">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                Copiar Trecho
-                            </button>
-                            ${_gerarBtnRevisaoHtml(activeTabId, null, 'global', sIdx, intencao, isRevisada)}
-                        </div>
-                    </div>`;
-                }).join('');
+                const globaisArray = [];
+                const gruposGProcessados = new Set();
+                
+                topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
+                    // Shallow Copy
+                    const dRender = { ...d, viewSource: 'global', localIndex: sIdx };
+                    
+                    if (!dRender.grupoId) {
+                        globaisArray.push(_gerarTemplateSubNo(dRender, sIdx, {
+                            topicoId: activeTabId,
+                            parentIndex: null,
+                            viewSource: 'global',
+                            bordaClass: 'borda-global',
+                            prefixoBadge: 'G.',
+                            usarLetra: false,
+                            tituloLeitura: 'Diretriz Global'
+                        }));
+                    } else {
+                        if (!gruposGProcessados.has(dRender.grupoId)) {
+                            gruposGProcessados.add(dRender.grupoId);
+                            globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
+                        }
+                    }
+                });
+                globaisHtml = globaisArray.join('');
             }
 
             htmlDiretrizesGlobais = `
@@ -1095,8 +1231,10 @@ window.TopicsManager = (function () {
         const containerRect = container.getBoundingClientRect();
         let svgContent = '';
 
-        // 1. LINHA VERMELHA: Conecta apenas de Grupo a Grupo (Master items)
-        const masterItemsForSpine = Array.from(container.querySelectorAll('.timeline-item-master:not(.nivel-hierarquico)'));
+        // 1. LINHA VERMELHA (ESPINHA DORSAL): Conecta Grupo a Grupo (incluindo Teses/Óbices)
+        // CORREÇÃO TOPOLÓGICA: Alterado de :not(.nivel-hierarquico) para :not(.nivel-global) 
+        // para que a linha ancore corretamente nos cards de Óbice de Admissibilidade.
+        const masterItemsForSpine = Array.from(container.querySelectorAll('.timeline-item-master:not(.nivel-global)'));
 
         for (let i = 0; i < masterItemsForSpine.length - 1; i++) {
             const currentGroup = masterItemsForSpine[i];
@@ -1117,7 +1255,19 @@ window.TopicsManager = (function () {
             const endY = rectProx.top - containerRect.top;
             const ctrlY = (startY + endY) / 2;
 
-            svgContent += `<path d="M ${startX},${startY} C ${startX},${ctrlY} ${endX},${ctrlY} ${endX},${endY}" stroke="#d32f2f" stroke-width="2.5" fill="none" stroke-linecap="round" />`;
+            // Constante geométrica para a haste horizontal nas pontas (8px para cada lado)
+            const tick = 8; 
+
+            // Montagem consolidada do Path:
+            // 1. Haste Superior (Move, Line)
+            // 2. Curva Sinuosa (Move, Curve)
+            // 3. Haste Inferior (Move, Line)
+            const pathD = `M ${startX - tick},${startY} L ${startX + tick},${startY} ` +
+                          `M ${startX},${startY} C ${startX},${ctrlY} ${endX},${ctrlY} ${endX},${endY} ` +
+                          `M ${endX - tick},${endY} L ${endX + tick},${endY}`;
+
+            // Injeção puramente geométrica e semântica delegando visualização para classe CSS
+            svgContent += `<path class="spine-connection" d="${pathD}" />`;
         }
 
         // VOLTAMOS A SELECIONAR TODOS AQUI, PARA A LINHA TRACEJADA FUNCIONAR NAS DIRETRIZES
@@ -1190,37 +1340,7 @@ window.TopicsManager = (function () {
         requestAnimationFrame(step);
     }
 
-    /**
-     * Alterna a expansão do texto longo e re-desenha as linhas dinamicamente
-     */
-    function toggleTextExpansion(btn) {
-        const itemContainer = btn.closest('.sub-annotation-item, .main-card-wrapper');
-        const card = itemContainer.querySelector('.sub-annotation-card, .annotation-card');
-        const content = card.querySelector('.sub-text-content, .card-texto');
-        if (!content) return;
-
-        const esteCardEstavaFocado = card.classList.contains('zen-focused');
-        
-        _fecharZenModeAtivo();
-
-        if (esteCardEstavaFocado) {
-            requestAnimationFrame(() => {
-                const container = document.getElementById('timeline-container');
-                if (container) requestAnimationFrame(() => _sincronizarConexoesComAnimacao(container));
-            });
-            return;
-        }
-
-        const isExpanded = content.classList.toggle('expanded');
-        btn.innerHTML = isExpanded ? 'Ocultar detalhes ▴' : 'Ler texto completo ▾';
-        
-        if (isExpanded) _ativarZenMode(card);
-
-        requestAnimationFrame(() => {
-            const container = document.getElementById('timeline-container');
-            if (container) requestAnimationFrame(() => _sincronizarConexoesComAnimacao(container));
-        });
-    }
+    // A função toggleTextExpansion foi removida. O sistema agora utiliza o Modo de Leitura Centralizado.
 
     let notaOcultaIndexAtual = -1;
 
@@ -1277,17 +1397,618 @@ window.TopicsManager = (function () {
         }
     }
 
+    // Listener ergonômico para Scroll Horizontal com a roda do mouse
+    const _headerEl = document.getElementById('topics-tabs-header');
+    if (_headerEl) {
+        _headerEl.addEventListener('wheel', (evt) => {
+            if (evt.deltaY !== 0) {
+                evt.preventDefault();
+                _headerEl.scrollLeft += evt.deltaY * 2;
+            }
+        }, { passive: false });
+    }
+
+    function abrirModoLeituraPilha(topicoId, grupoId, numeroRomano) {
+        const topico = topicos.find(t => t.id === topicoId);
+        if (!topico) return;
+        
+        let htmlAgrupado = '';
+        let itemContador = 1;
+
+        const getIntencaoLabel = (intKey) => {
+            const mapa = {
+                'comando': { text: 'COMANDO', color: '#c62828', bg: '#ffebee' },
+                'texto': { text: 'TEXTO FIXO', color: '#1565c0', bg: '#e3f2fd' },
+                'premissa': { text: 'PREMISSA', color: '#7b1fa2', bg: '#f3e5f5' },
+                'fundamentacao': { text: 'BASE LEGAL', color: '#00695c', bg: '#e0f2f1' },
+                'refutacao': { text: 'REFUTAÇÃO', color: '#8B4513', bg: '#efebe9' },
+                'preliminar': { text: 'PREJUDICIAL', color: '#5d4037', bg: '#efebe9' },
+                'veredito': { text: 'VEREDITO', color: '#e65100', bg: '#fff3e0' },
+                'nota': { text: 'NOTA INTERNA', color: '#616161', bg: '#f5f5f5' }
+            };
+            return mapa[intKey] || { text: 'DIRETRIZ', color: '#475569', bg: '#f1f5f9' };
+        };
+
+        const processar = (subArr, origemHtml) => {
+            if (subArr) {
+                subArr.filter(s => s.grupoId === grupoId).forEach((no) => {
+                    const intencaoKey = no.intencao || 'premissa';
+                    const configInt = getIntencaoLabel(intencaoKey);
+                    const isRevisada = no.revisada ? ' <span title="Revisada" style="color:#48bb78; margin-left:4px;">✔</span>' : '';
+                    
+                    htmlAgrupado += `
+                    <div style="padding-bottom: 16px; border-bottom: 1px dashed #e2e8f0; margin-bottom: 16px;">
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                            <span style="font-size:0.75rem; color:#64748b; font-weight:800; background:#f1f5f9; padding:2px 8px; border-radius:12px;">ITEM ${itemContador++}</span>
+                            <span style="font-size:0.7rem; font-weight:800; color:${configInt.color}; background:${configInt.bg}; padding:2px 8px; border-radius:12px; border: 1px solid ${configInt.color}40; display:flex; align-items:center;">${configInt.text}${isRevisada}</span>
+                            <span style="font-size:0.8rem; color:#475569; display:flex; align-items:center; gap:4px; margin-left: 4px;">${origemHtml}</span>
+                        </div>
+                        <div style="font-size: 1rem; color: #334155; line-height: 1.6;">
+                            ${renderizarMarkdownSeguro(escaparHTML(no.texto))}
+                        </div>
+                    </div>`;
+                });
+            }
+        };
+
+        // 1. Diretrizes Globais
+        processar(topico.diretrizesGlobais, '🌐 <strong>Diretriz Global</strong>');
+
+        // 2. Óbices (Teses do AI) e Provas
+        let ultimaTese = null;
+        topico.anotacoes.forEach(an => {
+            const teseAtual = an.tese || "Provas sem agrupamento";
+            
+            if (teseAtual !== ultimaTese) {
+                if (topico.diretrizesPorObice && topico.diretrizesPorObice[teseAtual]) {
+                    processar(topico.diretrizesPorObice[teseAtual], `⚖️ Óbice: <strong>${escaparHTML(teseAtual)}</strong>`);
+                }
+                ultimaTese = teseAtual;
+            }
+
+            const docMaster = an.documento || an.polo || 'Elemento Probatório';
+            const flMaster = an.pagina ? `(fl. ${an.pagina})` : '';
+            processar(an.subAnotacoes, `📄 ${escaparHTML(docMaster)} <em>${escaparHTML(flMaster)}</em>`);
+
+            if (an.itensCorrelacionados) {
+                an.itensCorrelacionados.forEach(ic => {
+                    const docCorr = ic.documento || ic.polo || 'Elemento Correlacionado';
+                    const flCorr = ic.pagina ? `(fl. ${ic.pagina})` : '';
+                    processar(ic.subAnotacoes, `📄 ${escaparHTML(docCorr)} <em>${escaparHTML(flCorr)}</em>`);
+                });
+            }
+        });
+
+        const modal = document.getElementById('reading-mode-modal');
+        document.getElementById('reading-mode-title-text').textContent = `Leitura da Pilha ${numeroRomano}`;
+        document.getElementById('reading-mode-content').innerHTML = htmlAgrupado || '<p style="color:#666; font-style:italic;">Nenhuma ideia encontrada para este grupo.</p>';
+        document.getElementById('reading-mode-backdrop').style.display = 'block';
+        modal.style.display = 'flex';
+    }
+
+    function desagruparPilha(topicoId, grupoId) {
+        if (!confirm('Deseja desagrupar esta pilha e restaurar os nós individualmente?')) return;
+        const topico = topicos.find(t => t.id === topicoId);
+        
+        const limparGrupo = (subArr) => {
+            if(subArr) subArr.forEach(s => { if (s.grupoId === grupoId) delete s.grupoId; });
+        };
+
+        topico.anotacoes.forEach(an => {
+            limparGrupo(an.subAnotacoes);
+            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => limparGrupo(ic.subAnotacoes));
+        });
+        limparGrupo(topico.diretrizesGlobais);
+        if (topico.diretrizesPorObice) Object.values(topico.diretrizesPorObice).forEach(arr => limparGrupo(arr));
+
+        renderizarFichario(topicos); 
+        if(window.salvarBackupAutomatico) salvarBackupAutomatico();
+        if(window.exibirToast) exibirToast('Pilha desagrupada com sucesso.', 'sucesso');
+    }
+
+    let _contextoEdicaoPilha = null;
+
+    function abrirModalPilha(topicoId, grupoId) {
+        _contextoEdicaoPilha = { topicoId, grupoId };
+        const topico = topicos.find(t => t.id === topicoId);
+        if (!topico) return;
+
+        let titAtual = "📚 Grupo de Ideias";
+        let descManualSalva = ""; // Inicia vazia (Piloto automático ON)
+
+        const extrair = (arr) => {
+            if (!arr) return;
+            const no = arr.find(s => s.grupoId === grupoId);
+            if (no) {
+                if (no.grupoTitulo) titAtual = no.grupoTitulo;
+                if (no.grupoDescricao) descManualSalva = no.grupoDescricao;
+            }
+        };
+
+        topico.anotacoes.forEach(an => { 
+            extrair(an.subAnotacoes); 
+            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => extrair(ic.subAnotacoes)); 
+        });
+        extrair(topico.diretrizesGlobais);
+        if (topico.diretrizesPorObice) Object.values(topico.diretrizesPorObice).forEach(arr => extrair(arr));
+
+        const inputTitulo = document.getElementById('input-pilha-titulo');
+        const inputDesc = document.getElementById('input-pilha-descricao');
+        
+        inputTitulo.value = titAtual;
+        inputDesc.value = descManualSalva; 
+        
+        // UX: Placeholder dinâmico
+        if (descManualSalva === "") {
+            const previewAuto = _obterTextosDaPilha(topico, grupoId);
+            inputDesc.placeholder = previewAuto !== "" ? previewAuto : "Nós vazios. O texto gerado aparecerá aqui...";
+        } else {
+            inputDesc.placeholder = "Deixe vazio para o sistema extrair os textos automaticamente.";
+        }
+
+        document.getElementById('pilha-modal-backdrop').style.display = 'block';
+        document.getElementById('modal-editar-pilha').style.display = 'flex';
+    }
+
+    function fecharModalPilha() {
+        document.getElementById('pilha-modal-backdrop').style.display = 'none';
+        document.getElementById('modal-editar-pilha').style.display = 'none';
+        _contextoEdicaoPilha = null;
+    }
+
+    function salvarEdicaoPilha() {
+        if (!_contextoEdicaoPilha) return;
+        const topico = topicos.find(t => t.id === _contextoEdicaoPilha.topicoId);
+        if (!topico) return;
+        
+        const nTit = document.getElementById('input-pilha-titulo').value.trim();
+        const nDesc = document.getElementById('input-pilha-descricao').value.trim();
+
+        // State Sanitization
+        const atualizar = (arr) => {
+            if (!arr) return;
+            arr.forEach(s => {
+                if (s.grupoId === _contextoEdicaoPilha.grupoId) {
+                    s.grupoTitulo = nTit;
+                    
+                    if (nDesc === "") {
+                        delete s.grupoDescricao;
+                    } else {
+                        s.grupoDescricao = nDesc;
+                    }
+                }
+            });
+        };
+
+        topico.anotacoes.forEach(an => { 
+            atualizar(an.subAnotacoes); 
+            if (an.itensCorrelacionados) an.itensCorrelacionados.forEach(ic => atualizar(ic.subAnotacoes)); 
+        });
+        atualizar(topico.diretrizesGlobais);
+        if (topico.diretrizesPorObice) Object.values(topico.diretrizesPorObice).forEach(arr => atualizar(arr));
+
+        fecharModalPilha();
+        renderizarFichario(topicos);
+        if (window.salvarBackupAutomatico) salvarBackupAutomatico();
+    }
+
     // API pública do módulo
     return {
+        abrirModalPilha,
+        fecharModalPilha,
+        salvarEdicaoPilha,
         obterCor,
         obterCorContraste,
         renderizarFichario,
+        abrirModoLeituraPilha,
+        desagruparPilha,
         getActiveTabId: () => activeTabId,
         setActiveTabId: (id) => { activeTabId = id; },
         escaparHTML,
-        toggleTextExpansion,
+        renderizarMarkdownSeguro,
+        abrirModoLeitura,
+        fecharModoLeitura,
+        copiarTextoModoLeitura,
         hexToRgba,
         rolarParaProximaNotaOculta
     };
 
+})();
+
+/* ================================================
+   VISÃO ESTRUTURADA (OUTLINE MODE) - REFINADO v3.1.0 (AI)
+   ================================================ */
+window.OutlineViewManager = (function() {
+    'use strict';
+
+    function abrir() {
+        const activeId = TopicsManager.getActiveTabId();
+        if (!activeId) {
+            exibirToast('Selecione um tópico primeiro.', 'aviso');
+            return;
+        }
+
+        const topico = topicos.find(t => t.id === activeId);
+        if (!topico) return;
+
+        const contentEl = document.getElementById('outline-view-content');
+        if (contentEl) {
+            contentEl.innerHTML = _construirHTML(topico);
+        }
+
+        document.getElementById('outline-view-backdrop').style.display = 'block';
+        document.getElementById('outline-view-modal').style.display = 'flex';
+    }
+
+    function fechar() {
+        const backdrop = document.getElementById('outline-view-backdrop');
+        const modal = document.getElementById('outline-view-modal');
+        if (backdrop) backdrop.style.display = 'none';
+        if (modal) modal.style.display = 'none';
+    }
+
+    function _render(texto) {
+        return TopicsManager.renderizarMarkdownSeguro(TopicsManager.escaparHTML(texto || ''));
+    }
+
+    function _obterRotuloIntencao(intencao) {
+        const mapa = {
+            'comando': 'Comando IA', 'texto': 'Texto Fixo', 'premissa': 'Premissa',
+            'fundamentacao': 'Base Legal', 'refutacao': 'Refutação', 
+            'preliminar': 'Prejudicial', 'veredito': 'Veredito'
+        };
+        return mapa[intencao] || 'Diretriz';
+    }
+
+    function _processarSubNos(subAnotacoes, margemLeft = '28px') {
+        if (!subAnotacoes || subAnotacoes.length === 0) return '';
+        let html = '';
+        subAnotacoes.forEach(sub => {
+            if (sub.intencao === 'nota') return; // Segurança LGPD
+            const intencaoKey = sub.intencao || 'premissa';
+            const rotulo = _obterRotuloIntencao(intencaoKey);
+            html += `
+            <div class="outline-sub-item" style="margin-left: ${margemLeft};">
+                <span class="outline-intent-chip intent-${intencaoKey}">${rotulo}</span>
+                <span class="outline-content-text">${_render(sub.texto)}</span>
+            </div>`;
+        });
+        return html;
+    }
+
+    function _gerarBlocoConteudo(item) {
+        if (item.tipo === 'imagem') return `<img src="${item.conteudo}" class="outline-img-preview" alt="Prova Visual">`;
+        if (item.tipo === 'audio') {
+            try {
+                const ad = JSON.parse(item.conteudo);
+                const role = TopicsManager.escaparHTML(ad.role || ad.oradorStr || 'Orador Desconhecido');
+                const safeFormatTime = (sec) => window.AudioManager?.formatTime ? window.AudioManager.formatTime(sec) : `${Math.floor(sec/60)}' ${Math.floor(sec%60)}''`;
+                const tempoStr = `${safeFormatTime(ad.inicio)} a ${safeFormatTime(ad.fim)}`;
+                const transcricao = ad.transcricao ? `<strong>Degravação:</strong> "${_render(ad.transcricao)}"` : '<em>Sem degravação cadastrada.</em>';
+                return `<div class="outline-audio-box"><div>🎙️ <strong>Oitiva de Audiência:</strong> ${role} (⏱️ ${tempoStr})</div><div style="margin-top:4px;">${transcricao}</div></div>`;
+            } catch (e) {
+                return `<div class="outline-audio-box" style="color:#d32f2f;">Erro na leitura do áudio.</div>`;
+            }
+        }
+        return `<div class="outline-content-text" style="font-style: italic; font-size: 0.92rem; color: #334155;">"${_render(item.conteudo)}"</div>`;
+    }
+
+    function _construirHTML(topico) {
+        let html = `
+        <div style="margin-bottom: 20px;">
+            <div class="outline-title" style="margin-bottom: 4px;">Tópico: ${TopicsManager.escaparHTML(topico.nome)}</div>
+            <p style="font-size: 0.8rem; color: #64748b;">Visão linear compilada para estruturação de minutas e prompts de IA.</p>
+        </div>`;
+
+        if (topico.alegacoes || topico.fundamentos || topico.veredito) {
+            html += `<div class="outline-section-block" id="sec-preambulo">
+                <div class="outline-h2-bar no-copy">
+                    <span class="outline-h2-title">📋 Relatório e Posições do Processo</span>
+                    <button class="btn-copy-section no-copy" onclick="OutlineViewManager.copiarTrechoElemento('sec-preambulo')">📋 Copiar Seção</button>
+                </div><div class="outline-section-body">`;
+            if (topico.alegacoes) html += `<div style="margin-bottom: 12px;"><div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #f57c00; margin-bottom: 2px;">Razões Recursais (Recorrente)</div><div class="outline-content-text">${_render(topico.alegacoes)}</div></div>`;
+            if (topico.fundamentos) html += `<div style="margin-bottom: 12px;"><div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #3949ab; margin-bottom: 2px;">Fundamentos da Sentença (Origem)</div><div class="outline-content-text">${_render(topico.fundamentos)}</div></div>`;
+            if (topico.veredito) html += `<div><div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #e65100; margin-bottom: 2px;">Veredito Pretendido / Conclusão</div><div class="outline-content-text">${_render(topico.veredito)}</div></div>`;
+            html += `</div></div>`;
+        }
+
+        if (topico.diretrizesGlobais && topico.diretrizesGlobais.length > 0) {
+            const dirVisiveis = topico.diretrizesGlobais.filter(d => d.intencao !== 'nota');
+            if (dirVisiveis.length > 0) {
+                html += `<div class="outline-section-block" id="sec-globais">
+                    <div class="outline-h2-bar no-copy">
+                        <span class="outline-h2-title">🌐 Diretrizes Globais do Tópico</span>
+                        <button class="btn-copy-section no-copy" onclick="OutlineViewManager.copiarTrechoElemento('sec-globais')">📋 Copiar Seção</button>
+                    </div><div class="outline-section-body">`;
+                dirVisiveis.forEach(dir => {
+                    const intencaoKey = dir.intencao || 'premissa';
+                    html += `<div class="outline-sub-item" style="margin-left:0; margin-bottom:8px;"><span class="outline-intent-chip intent-${intencaoKey}">${_obterRotuloIntencao(intencaoKey)}</span><span class="outline-content-text">${_render(dir.texto)}</span></div>`;
+                });
+                html += `</div></div>`;
+            }
+        }
+
+        html += `<div class="outline-section-block" id="sec-matriz">
+            <div class="outline-h2-bar no-copy">
+                <span class="outline-h2-title">📑 Matriz Probatória e Óbices (Teses)</span>
+                <button class="btn-copy-section no-copy" onclick="OutlineViewManager.copiarTrechoElemento('sec-matriz')">📋 Copiar Seção</button>
+            </div><div class="outline-section-body">`;
+
+        if (topico.anotacoes.length === 0) html += `<p style="color: #94a3b8; font-style: italic; font-size: 0.85rem;">Nenhuma prova cadastrada.</p>`;
+
+        let ultimaTese = null;
+        topico.anotacoes.forEach(an => {
+            const teseAtual = an.tese || "Provas sem agrupamento";
+            if (teseAtual !== ultimaTese) {
+                html += `<div style="margin-top: 20px; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px dashed #cbd5e1;"><span style="font-weight: 800; color: #6a1b9a; font-size: 0.95rem;">⚖️ Óbice / Tese: ${TopicsManager.escaparHTML(teseAtual)}</span></div>`;
+                
+                // NOTA ARQUITETURAL AI: Utiliza diretrizesPorObice
+                if (topico.diretrizesPorObice && topico.diretrizesPorObice[teseAtual]) {
+                    topico.diretrizesPorObice[teseAtual].filter(d => d.intencao !== 'nota').forEach(dir => {
+                        const intKey = dir.intencao || 'premissa';
+                        html += `<div class="outline-sub-item" style="margin-left: 12px; margin-bottom: 6px;"><span class="outline-intent-chip intent-${intKey}">${_obterRotuloIntencao(intKey)}</span><span class="outline-content-text">${_render(dir.texto)}</span></div>`;
+                    });
+                }
+                ultimaTese = teseAtual;
+            }
+
+            const docSeguro = TopicsManager.escaparHTML(an.documento || an.polo || 'Documento');
+            const refMeta = an.pagina ? ` (fl. ${TopicsManager.escaparHTML(String(an.pagina))})` : '';
+
+            html += `<div class="outline-card"><div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;"><span class="outline-meta-tag">${docSeguro}</span><span style="font-size: 0.78rem; color: #64748b; font-weight: 600;">${refMeta}</span></div>${_gerarBlocoConteudo(an)}${an.comentario ? `<div style="margin-top: 6px; font-size: 0.82rem; color: #475569;"><strong>Obs:</strong> ${_render(an.comentario)}</div>` : ''}</div>`;
+            html += _processarSubNos(an.subAnotacoes, '24px');
+
+            if (an.itensCorrelacionados && an.itensCorrelacionados.length > 0) {
+                an.itensCorrelacionados.forEach(corr => {
+                    const cDocSeguro = TopicsManager.escaparHTML(corr.documento || corr.polo || 'Documento');
+                    const cRefMeta = corr.pagina ? ` (fl. ${TopicsManager.escaparHTML(String(corr.pagina))})` : '';
+                    html += `<div class="outline-card correlacionado"><div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;"><span class="outline-meta-tag" style="background: #e2e8f0;">${cDocSeguro}</span><span style="font-size: 0.78rem; color: #64748b; font-weight: 600;">${cRefMeta}</span></div>${_gerarBlocoConteudo(corr)}${corr.comentario ? `<div style="margin-top: 6px; font-size: 0.82rem; color: #475569;"><strong>Obs:</strong> ${_render(corr.comentario)}</div>` : ''}</div>`;
+                    html += _processarSubNos(corr.subAnotacoes, '40px');
+                });
+            }
+        });
+        html += `</div></div>`;
+        return html;
+    }
+
+    // Função _atualizarEstatisticas removida conforme Refatoração Arquitetural O(n)
+
+    async function copiarTudo() {
+        const contentEl = document.getElementById('outline-view-content');
+        if (!contentEl) return;
+        const clone = contentEl.cloneNode(true);
+        clone.querySelectorAll('.no-copy, .btn-copy-section').forEach(el => el.remove());
+        try {
+            const clipboardItem = new ClipboardItem({
+                'text/plain': new Blob([clone.innerText.trim()], { type: 'text/plain' }),
+                'text/html': new Blob([clone.innerHTML], { type: 'text/html' })
+            });
+            await navigator.clipboard.write([clipboardItem]);
+            exibirToast('Documento completo copiado para o Word/PJe!', 'sucesso');
+        } catch (err) {
+            navigator.clipboard.writeText(clone.innerText.trim()).then(() => exibirToast('Texto simples copiado.', 'info'));
+        }
+    }
+
+    function copiarComoMarkdown() {
+        const topico = topicos.find(t => t.id === TopicsManager.getActiveTabId());
+        if (!topico) return;
+        let md = `# TÓPICO: ${topico.nome.toUpperCase()}\n\n`;
+        if (topico.alegacoes) md += `## RAZÕES RECURSAIS\n${topico.alegacoes}\n\n`;
+        if (topico.fundamentos) md += `## FUNDAMENTOS DA SENTENÇA\n${topico.fundamentos}\n\n`;
+        if (topico.veredito) md += `## VEREDITO PRETENDIDO\n${topico.veredito}\n\n`;
+        if (topico.diretrizesGlobais?.length > 0) {
+            const globaisVisiveis = topico.diretrizesGlobais.filter(d => d.intencao !== 'nota');
+            if (globaisVisiveis.length > 0) {
+                md += `## DIRETRIZES GLOBAIS\n`;
+                globaisVisiveis.forEach(d => md += `- [${(d.intencao || 'diretriz').toUpperCase()}]: ${d.texto}\n`);
+                md += `\n`;
+            }
+        }
+        md += `## MATRIZ PROBATÓRIA E ÓBICES (TESES)\n`;
+        let ultimaTese = null;
+        topico.anotacoes.forEach((an, i) => {
+            const tese = an.tese || "Geral";
+            if (tese !== ultimaTese) { md += `\n### ÓBICE / TESE: ${tese}\n`; ultimaTese = tese; }
+            md += `\n* PROVA ${i + 1}: ${an.documento || an.polo || 'Elemento'}${an.pagina ? ` (fl. ${an.pagina})` : ''}\n`;
+            if (an.tipo === 'texto') md += `  > "${an.conteudo}"\n`;
+            if (an.subAnotacoes) an.subAnotacoes.forEach(sub => {
+                if (sub.intencao !== 'nota') md += `  - [${(sub.intencao || 'nó').toUpperCase()}]: ${sub.texto}\n`;
+            });
+        });
+        navigator.clipboard.writeText(md.trim()).then(() => exibirToast('Markdown copiado para IA!', 'sucesso'));
+    }
+
+    function copiarTrechoElemento(idElemento) {
+        const el = document.getElementById(idElemento);
+        if (!el) return;
+        const clone = el.cloneNode(true);
+        clone.querySelectorAll('.no-copy, .btn-copy-section').forEach(b => b.remove());
+        navigator.clipboard.writeText(clone.innerText.trim()).then(() => exibirToast('Seção copiada!', 'sucesso'));
+    }
+
+    return { abrir, fechar, copiarTudo, copiarComoMarkdown, copiarTrechoElemento };
+})();
+
+/* ================================================
+   VISÃO DE MINUTA (LEITURA FLUIDA)
+   ================================================ */
+window.MinutaViewManager = (function() {
+    'use strict';
+
+    const INTENCOES_PERMITIDAS = ['comando', 'texto', 'premissa', 'preliminar', 'refutacao'];
+
+    function abrir() {
+        const activeId = TopicsManager.getActiveTabId();
+        if (!activeId) {
+            exibirToast('Selecione um tópico primeiro.', 'aviso');
+            return;
+        }
+
+        const topico = topicos.find(t => t.id === activeId);
+        if (!topico) return;
+
+        const contentEl = document.getElementById('minuta-view-content');
+        if (contentEl) contentEl.innerHTML = _construirHTML(topico);
+
+        document.getElementById('minuta-view-backdrop').style.display = 'block';
+        document.getElementById('minuta-view-modal').style.display = 'flex';
+    }
+
+    function fechar() {
+        document.getElementById('minuta-view-backdrop').style.display = 'none';
+        document.getElementById('minuta-view-modal').style.display = 'none';
+        const contentEl = document.getElementById('minuta-view-content');
+        if (contentEl) contentEl.innerHTML = ''; // Prevenção de DOM State Leakage
+    }
+
+    function _render(texto) {
+        return TopicsManager.renderizarMarkdownSeguro(TopicsManager.escaparHTML(texto || ''));
+    }
+
+    function _processarNo(noItem) {
+        const intencao = noItem.intencao || 'premissa';
+        if (!INTENCOES_PERMITIDAS.includes(intencao)) return '';
+
+        const textoHTML = _render(noItem.texto);
+        return intencao === 'comando' 
+            ? `<div class="minuta-comando-card">${textoHTML}</div>` 
+            : `<div class="minuta-text-block">${textoHTML}</div>`;
+    }
+
+    function _construirHTML(topico) {
+        // Arquitetura limpa: delegação visual para as classes do CSS (.doc-modal)
+        let html = `
+        <div style="margin-bottom: 24px;">
+            <div class="doc-modal__topic-title">Tópico: ${TopicsManager.escaparHTML(topico.nome)}</div>
+            <p class="doc-modal__topic-subtitle">Pré-visualização da extração linear da minuta.</p>
+        </div>`;
+        let nodesEncontrados = false;
+
+        if (topico.diretrizesGlobais?.length > 0) {
+            topico.diretrizesGlobais.forEach(dir => {
+                const nodeHtml = _processarNo(dir);
+                if(nodeHtml) { html += nodeHtml; nodesEncontrados = true; }
+            });
+        }
+
+        let ultimaTese = null;
+        topico.anotacoes.forEach(an => {
+            const teseAtual = an.tese || "Provas sem agrupamento de tese";
+            if (teseAtual !== ultimaTese) {
+                // ADAPTAÇÃO PARA AGRAVO DE INSTRUMENTO (AI): diretrizesPorObice
+                topico.diretrizesPorObice?.[teseAtual]?.forEach(dir => {
+                    const nodeHtml = _processarNo(dir);
+                    if(nodeHtml) { html += nodeHtml; nodesEncontrados = true; }
+                });
+                ultimaTese = teseAtual;
+            }
+
+            an.subAnotacoes?.forEach(sub => {
+                const nodeHtml = _processarNo(sub);
+                if(nodeHtml) { html += nodeHtml; nodesEncontrados = true; }
+            });
+
+            an.itensCorrelacionados?.forEach(corr => {
+                corr.subAnotacoes?.forEach(sub => {
+                    const nodeHtml = _processarNo(sub);
+                    if(nodeHtml) { html += nodeHtml; nodesEncontrados = true; }
+                });
+            });
+        });
+
+        if (!nodesEncontrados) {
+            html += `<p style="color: #94a3b8; font-style: italic;">Nenhum nó de ideia elegível para a minuta foi encontrado neste tópico.</p>`;
+        }
+
+        return html;
+    }
+
+    async function copiarTexto() {
+        const contentEl = document.getElementById('minuta-view-content');
+        if (!contentEl) return;
+        
+        const clone = contentEl.cloneNode(true);
+        clone.querySelector('h2')?.remove();
+
+        const plainText = clone.innerText.trim();
+        const htmlText = clone.innerHTML;
+
+        try {
+            const clipboardItem = new ClipboardItem({
+                'text/plain': new Blob([plainText], { type: 'text/plain' }),
+                'text/html': new Blob([htmlText], { type: 'text/html' })
+            });
+            await navigator.clipboard.write([clipboardItem]);
+            exibirToast('Texto copiado com formatação preservada!', 'sucesso');
+        } catch (err) {
+            const textArea = document.createElement("div");
+            textArea.contentEditable = true;
+            textArea.innerHTML = htmlText;
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            
+            const range = document.createRange();
+            range.selectNodeContents(textArea);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            
+            document.execCommand("copy");
+            document.body.removeChild(textArea);
+            exibirToast('Texto copiado (Modo Legado).', 'info');
+        }
+    }
+
+    function copiarComoMarkdown() {
+        const activeId = TopicsManager.getActiveTabId();
+        const topico = topicos.find(t => t.id === activeId);
+        if (!topico) return;
+
+        let md = `# Tópico: ${topico.nome}\n\n`;
+        let nodesEncontrados = false;
+
+        // Função interna para processar cada nó para Markdown
+        function _processarNoMd(noItem) {
+            const intencao = noItem.intencao || 'premissa';
+            if (!INTENCOES_PERMITIDAS.includes(intencao)) return '';
+            
+            nodesEncontrados = true;
+            let texto = noItem.texto.trim();
+            
+            if (intencao === 'comando') {
+                return `> **COMANDO / INSTRUÇÃO:**\n> ${texto}\n\n`;
+            }
+            return `${texto}\n\n`;
+        }
+
+        if (topico.diretrizesGlobais?.length > 0) {
+            topico.diretrizesGlobais.forEach(dir => { md += _processarNoMd(dir); });
+        }
+
+        let ultimaTese = null;
+        topico.anotacoes.forEach(an => {
+            const teseAtual = an.tese || "Provas sem agrupamento de tese";
+            if (teseAtual !== ultimaTese) {
+                // ADAPTAÇÃO PARA AGRAVO DE INSTRUMENTO (AI): diretrizesPorObice
+                topico.diretrizesPorObice?.[teseAtual]?.forEach(dir => { md += _processarNoMd(dir); });
+                ultimaTese = teseAtual;
+            }
+            an.subAnotacoes?.forEach(sub => { md += _processarNoMd(sub); });
+            an.itensCorrelacionados?.forEach(corr => {
+                corr.subAnotacoes?.forEach(sub => { md += _processarNoMd(sub); });
+            });
+        });
+
+        if (!nodesEncontrados) {
+            md += `*Nenhum nó de ideia elegível para a minuta foi encontrado neste tópico.*\n`;
+        }
+
+        navigator.clipboard.writeText(md.trim()).then(() => {
+            exibirToast('Minuta copiada em Markdown para IA!', 'sucesso');
+        });
+    }
+
+    return { abrir, fechar, copiarTexto, copiarComoMarkdown };
 })();
