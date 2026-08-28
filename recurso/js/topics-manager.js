@@ -10,7 +10,9 @@ window.TopicsManager = (function () {
 
     let _activeTopicoCor = '#ffffff';
 
-    // Observer Otimizado (Debounce de ~16ms para agrupar Recalculate Styles)
+    /* ================================================
+       OBSERVER DE LAYOUT OTIMIZADO (ANTI-THRASING)
+       ================================================ */
     let _layoutDebounceTimer = null;
     let _isUpdatingLayout = false;
     const _lastHeights = new Map(); 
@@ -20,32 +22,34 @@ window.TopicsManager = (function () {
         let needsRedraw = false;
 
         for (const entry of entries) {
-            // Bloqueia execução em elementos ocultos (Mata o loop de backup)
-            if (entry.target.offsetParent === null) continue;
+            // 1. FILTRO DE ELEMENTOS OCULTOS: Ignora abas inativas ou nós desmontados
+            if (!entry.target || entry.target.offsetParent === null) continue;
 
             const currentHeight = Math.round(entry.contentRect.height);
-            const elementId = entry.target.id || 'unknown-element';
+            const elementId = entry.target.id || entry.target.dataset.uuid || 'dom-node';
             const lastHeight = _lastHeights.get(elementId) || 0;
 
-            if (currentHeight > 10 && Math.abs(currentHeight - lastHeight) > 3) {
+            // 2. THRESHOLD DELTA: Ignora variações sub-pixel que geram loop infinito
+            if (currentHeight > 10 && Math.abs(currentHeight - lastHeight) >= 3) {
                 _lastHeights.set(elementId, currentHeight);
                 needsRedraw = true;
             }
         }
 
+        // 3. EXECUÇÃO EM LOTE VIA REQUEST ANIMATION FRAME
         if (needsRedraw) {
             clearTimeout(_layoutDebounceTimer);
             _layoutDebounceTimer = setTimeout(() => {
                 _isUpdatingLayout = true;
                 requestAnimationFrame(() => {
                     const container = document.getElementById('timeline-container');
-                    if (container) {
+                    if (container && container.offsetParent !== null) {
                         posicionarNosDeIdeia(container);
                         desenharConexoes();
                     }
-                    setTimeout(() => { _isUpdatingLayout = false; }, 60);
+                    setTimeout(() => { _isUpdatingLayout = false; }, 50);
                 });
-            }, 64); 
+            }, 32); 
         }
     });
 

@@ -144,7 +144,7 @@
    2. TIMELINE VISUAL (MAPA MENTAL)
    ================================================ */
 .timeline-container { position: relative; padding: 24px 15px 10px; display: flex; flex-direction: column; }
-#connections-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+#connections-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; contain: strict; /* SVG isolado sem impacto no fluxo de caixas HTML */ }
 .timeline-item-master { position: relative; z-index: 2; display: flex; gap: 32px; width: 100%; margin-bottom: 112px; align-items: stretch; overflow: visible; }
 .timeline-item-master.align-left { flex-direction: row; }
 .timeline-item-master.align-right { flex-direction: row-reverse; }

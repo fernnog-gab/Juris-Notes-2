@@ -860,30 +860,49 @@ function confirmarSubAnotacao(topicoId, anotacaoIndex, cIdx = null) {
     exibirToast('Observação secundária vinculada.', 'sucesso');
 }
 
-/* --- MODAL DE TESE COM CLASSIFICAÇÃO SEMÂNTICA --- */
+/* ================================================
+   SISTEMA DE CLASSIFICAÇÃO E REDAÇÃO DE TESES
+   ================================================ */
 let _ideiaContextoTese = null;
 
 const MAPA_TESE_ICONES = {
     'neutro': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"><circle cx="12" cy="12" r="10"></circle></svg>', 
-        color: '#f57f17', bg: '#fff9c4', border: '#ffe082', title: 'Tese Mista / Neutra' 
+        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle></svg>', 
+        color: '#f57f17', 
+        bg: '#fff9c4', 
+        border: '#ffe082', 
+        title: 'Tese Mista / Não especificada', 
+        label: 'Tese Neutra' 
     },
     'autora': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3v5l-9 9-5-5 9-9h5z"></path><path d="M9 13l-6 6"></path><path d="M3 21l3-3"></path></svg>', 
-        color: '#388e3c', bg: '#e8f5e9', border: '#a5d6a7', title: 'Recurso da Autora' 
+        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px; transform: scaleX(-1);" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>', 
+        color: '#2e7d32', 
+        bg: '#e8f5e9', 
+        border: '#a5d6a7', 
+        title: 'Recurso da Parte Autora', 
+        label: 'Recurso Autora' 
     },
     're': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>', 
-        color: '#d32f2f', bg: '#ffebee', border: '#ef9a9a', title: 'Recurso da Ré' 
+        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>', 
+        color: '#c62828', 
+        bg: '#ffebee', 
+        border: '#ef9a9a', 
+        title: 'Recurso da Parte Ré', 
+        label: 'Recurso Ré' 
     },
     'juizo': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 24px; height: 24px; display: block;" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13 6.5 20.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 5.5-5.5a2.12 2.12 0 0 0 0-3l-1.5-1.5a2.12 2.12 0 0 0-3 0L11.5 11.5"></path><path d="M15 14l-4-4"></path><path d="M8 7l4 4"></path></svg>', 
-        color: '#0f253d', bg: '#e3f2fd', border: '#90caf9', title: 'Diretriz do Juízo' 
+        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13 6.5 20.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 5.5-5.5a2.12 2.12 0 0 0 0-3l-1.5-1.5a2.12 2.12 0 0 0-3 0L11.5 11.5"></path><path d="M15 14l-4-4"></path><path d="M8 7l4 4"></path></svg>', 
+        color: '#0d47a1', 
+        bg: '#e3f2fd', 
+        border: '#90caf9', 
+        title: 'Diretriz / Fundamento da Sentença', 
+        label: 'Juízo / Sentença' 
     }
 };
 
 window.ciclarClassificacaoTese = function(e) {
     e.preventDefault();
+    e.stopPropagation();
     const btn = document.getElementById('btn-classificacao-tese');
     const estados = ['neutro', 'autora', 're', 'juizo'];
     let atual = estados.indexOf(btn.dataset.classificacao);
@@ -893,27 +912,45 @@ window.ciclarClassificacaoTese = function(e) {
 
 function _aplicarVisualBotaoTese(chave) {
     const btn = document.getElementById('btn-classificacao-tese');
+    const iconSpan = document.getElementById('icone-classificacao-tese');
+    const textSpan = document.getElementById('texto-classificacao-tese');
+    
+    if (!btn) return;
+
     const config = MAPA_TESE_ICONES[chave] || MAPA_TESE_ICONES['neutro'];
     
     btn.dataset.classificacao = chave;
     btn.title = config.title;
-    btn.style.background = config.bg;
+    btn.style.backgroundColor = config.bg;
     btn.style.borderColor = config.border;
     btn.style.color = config.color;
-    btn.innerHTML = config.icon;
+    
+    if (iconSpan) iconSpan.innerHTML = config.icon;
+    if (textSpan) textSpan.textContent = config.label;
 }
 
 function abrirModalTese(topicoId, index) {
     _ideiaContextoTese = { topicoId, index };
-    document.getElementById('tese-ideia-num').textContent = index + 1;
-    const anotacao = topicos.find(t => t.id === topicoId).anotacoes[index];
+    const topico = topicos.find(t => t.id === topicoId);
+    if (!topico || !topico.anotacoes[index]) return;
+
+    const anotacao = topico.anotacoes[index];
     
-    document.getElementById('input-texto-tese').value = anotacao.tese || '';
-    // Backward Compatibility (Fallback p/ neutro)
+    document.getElementById('tese-ideia-num').textContent = index + 1;
+    
+    const textarea = document.getElementById('input-texto-tese');
+    textarea.value = anotacao.tese || '';
+    
     _aplicarVisualBotaoTese(anotacao.teseClassificacao || 'neutro');
     
     document.getElementById('wizard-backdrop').style.display = 'block';
     document.getElementById('modal-editar-tese').style.display = 'flex';
+    
+    // Auto-focus com preservação de scroll
+    setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }, 50);
 }
 
 function fecharModalTese() {
@@ -925,13 +962,18 @@ function fecharModalTese() {
 function salvarTese() {
     if (!_ideiaContextoTese) return;
     const topico = topicos.find(t => t.id === _ideiaContextoTese.topicoId);
+    if (!topico || !topico.anotacoes[_ideiaContextoTese.index]) return;
     
-    topico.anotacoes[_ideiaContextoTese.index].tese = document.getElementById('input-texto-tese').value.trim();
-    // Evolução de Schema: Injeta a chave dinamicamente
-    topico.anotacoes[_ideiaContextoTese.index].teseClassificacao = document.getElementById('btn-classificacao-tese').dataset.classificacao; 
+    const textoTese = document.getElementById('input-texto-tese').value.trim();
+    const classificacao = document.getElementById('btn-classificacao-tese').dataset.classificacao;
     
-    renderizarTopicos(); salvarBackupAutomatico();
-    exibirToast('Tese salva com sucesso!', 'sucesso');
+    topico.anotacoes[_ideiaContextoTese.index].tese = textoTese;
+    topico.anotacoes[_ideiaContextoTese.index].teseClassificacao = classificacao;
+    
+    renderizarTopicos(); 
+    salvarBackupAutomatico();
+    
+    exibirToast('Tese recursal atualizada com sucesso!', 'sucesso');
     fecharModalTese();
 }
 
