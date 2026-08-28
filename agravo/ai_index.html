@@ -42,10 +42,35 @@
 <link rel="stylesheet" href="ai_juris-reader-tools.css?v=3.0.0">
 
 <!-- 3. Fichário, Timeline, Fases Metodológicas e Acervo (Síntese e Saída) -->
-<link rel="stylesheet" href="ai_juris-timeline-cards.css?v=3.0.0">
+<link rel="stylesheet" href="ai_juris-timeline-cards.css?v=3.1.1">
 </head>
 <body>
     
+    <!-- SVG SPRITE (Ícones Vetoriais do Editor) -->
+    <svg style="display: none;">
+        <symbol id="icon-bold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path>
+        </symbol>
+        <symbol id="icon-italic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line>
+        </symbol>
+        <symbol id="icon-underline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"></path><line x1="4" y1="21" x2="20" y2="21"></line>
+        </symbol>
+        <symbol id="icon-font-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line><path d="M18 10l3-3 3 3"></path><line x1="21" y1="7" x2="21" y2="15"></line>
+        </symbol>
+        <symbol id="icon-font-up-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line><path d="M17 12l4-4 4 4"></path><path d="M17 17l4-4 4 4"></path>
+        </symbol>
+        <symbol id="icon-copy-html" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </symbol>
+        <symbol id="icon-copy-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line>
+        </symbol>
+    </svg>
+
     <!-- ========================================== -->
     <!-- SPLASH SCREEN JURIS NOTES                  -->
     <!-- ========================================== -->
@@ -124,6 +149,22 @@
                     </svg>
                 </button>
 
+                <!-- NOVO BOTÃO: Visão Estruturada (Nasce desabilitado) -->
+                <button class="icon-btn" id="btn-visao-estruturada" onclick="OutlineViewManager.abrir()" title="Visão Estruturada (Documento)" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                </button>
+
+                <!-- NOVO BOTÃO: Visão de Minuta -->
+                <button class="icon-btn" id="btn-visao-minuta" onclick="MinutaViewManager.abrir()" title="Visão de Minuta (Pré-visualização do Texto)&#10;Exibe apenas argumentos e comandos." disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                </button>
+
                  <!-- NOVO: Botão da Balança da Justiça -->
                 <button class="icon-btn" id="btn-balanca-justica" onclick="BalancaManager.abrirPainel(event)" title="Dossiê Recursal&#10;[Alt + B] para abrir/substituir" disabled>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -136,7 +177,7 @@
                 </button>
 
                 <!-- Botão de Tarefas (Lembretes) -->
-                <button class="icon-btn" id="btn-lembretes-tarefa" onclick="BalancaManager.abrirLembretes(event)" title="Lembretes / Tarefas do Painel" disabled style="position: relative;">
+                <button class="icon-btn" id="btn-lembretes-tarefa" onclick="TaskManager.abrirModal(event)" title="Gerenciador de Tarefas" style="position: relative;">
                     <!-- Ícone de Check-list -->
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M9 11l3 3L22 4"></path>
@@ -204,15 +245,65 @@
     </div>
     
     <div class="main-content">
-        <div class="tabs">
-            <button class="tab-btn active" id="tab-leitura" onclick="trocarAba('leitura')">
-                Processo <span id="tag-numero-processo" class="tab-module-badge badge-ai" style="display: none; margin-left: 6px; font-size: 0.65rem;"></span>
-            </button>
-            <button class="tab-btn" id="tab-historico" onclick="trocarAba('historico')">
-            Anotações <span class="tab-module-badge badge-ai">AGRAVO DE INSTRUMENTO</span>
-        </button>
-            <div id="active-audio-indicator" onclick="AudioManager.alternarPlayer()" title="Audiência em andamento (Clique para abrir)" style="display: none;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
+        <div class="tabs" role="navigation" aria-label="Navegação Principal">
+            
+            <!-- 1. Envelopamento das Abas de Navegação -->
+            <div class="tabs-nav">
+                <button class="tab-btn active" id="tab-leitura" onclick="trocarAba('leitura')">
+                    Processo <span id="tag-numero-processo" class="tab-module-badge badge-ai" style="display: none; margin-left: 6px; font-size: 0.65rem;"></span>
+                </button>
+                <button class="tab-btn" id="tab-historico" onclick="trocarAba('historico')">
+                    Anotações <span class="tab-module-badge badge-ai">AGRAVO DE INSTRUMENTO</span>
+                </button>
+            </div>
+
+            <!-- 2. Nova Ilha de Ferramentas Minimalista no Header -->
+            <div class="header-tools-area" role="toolbar" aria-label="Ferramentas da Sessão">
+                
+                <!-- Módulo: Player de Áudio (Com Berço Fantasma) -->
+                <div class="ghost-mic-wrapper" title="Nenhuma audiência em andamento">
+                    <svg class="ghost-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    </svg>
+                    <div id="active-audio-indicator" role="button" tabindex="0" aria-label="Audiência em andamento" onclick="AudioManager.alternarPlayer()" title="Audiência em andamento (Clique para abrir)" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        </svg>
+                    </div>
+                </div>
+        
+                <div class="tool-separator"></div>
+        
+                <!-- Módulo: Contrato de Trabalho -->
+                <div id="btn-contrato-trabalho" class="floating-pill-dark" role="button" tabindex="0" aria-label="Parâmetros do Contrato" style="display:none;" onclick="ContratoManager.abrirModal()" title="Adicionar Parâmetros do Contrato">
+                    <div class="pill-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                        </svg>
+                    </div>
+                    <span id="contrato-status-text">Contrato</span>
+                </div>
+        
+                <div class="tool-separator"></div>
+        
+                <!-- Módulo: Time Tracker -->
+                <div id="efficiency-tracker-container" class="tracker-group" style="display: none;">
+                    <div id="hidden-notes-tracker" class="floating-lamp-tracker" role="button" tabindex="0" style="display: none;" onclick="TopicsManager.rolarParaProximaNotaOculta()" title="Você tem notas ocultas neste tópico. Clique para navegar.">
+                        <div class="lamp-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg>
+                        </div>
+                        <span id="hidden-notes-badge" class="task-badge">0</span>
+                    </div>
+        
+                    <div id="efficiency-tracker-pill" role="button" tabindex="0" onclick="TimeTrackerManager.handleClick()">
+                        <div id="tracker-bg-mask"></div>
+                        <div class="tracker-content">
+                            <div id="efficiency-tracker-dot"></div>
+                            <span id="efficiency-tracker-time">00:00</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -243,32 +334,8 @@
         <div id="history-container">
             <div id="topics-tabs-header" class="topics-tab-bar"></div>
             
-            <!-- NOVO: Wrapper relativo que encapsula o cronômetro e o conteúdo -->
+            <!-- Wrapper relativo mantido para preservar o contexto do conteúdo -->
             <div style="position: relative;">
-                <!-- Cronômetro e Lâmpada (Tracker Flutuante) ancorados no scroll -->
-                <div id="efficiency-tracker-container" style="display: flex; gap: 12px; align-items: flex-start; display: none;">
-                    
-                    <!-- NOVO: Rastreador de Notas Ocultas (A Lâmpada) -->
-                    <div id="hidden-notes-tracker" class="floating-lamp-tracker" style="display: none;" onclick="TopicsManager.rolarParaProximaNotaOculta()" title="Você tem notas ocultas neste tópico. Clique para navegar.">
-                        <div class="lamp-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18h6"></path>
-                                <path d="M10 22h4"></path>
-                                <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path>
-                            </svg>
-                        </div>
-                        <span id="hidden-notes-badge" class="task-badge">0</span>
-                    </div>
-
-                    <!-- MANTIDO: Pílula do Cronômetro original -->
-                    <div id="efficiency-tracker-pill" onclick="TimeTrackerManager.handleClick()">
-                        <div id="tracker-bg-mask"></div>
-                        <div class="tracker-content">
-                            <div id="efficiency-tracker-dot"></div>
-                            <span id="efficiency-tracker-time">00:00</span>
-                        </div>
-                    </div>
-                </div>
                 
                 <!-- Área onde os cards são injetados pelo sistema -->
                 <div id="topics-tab-content" class="topics-content-area"></div>
@@ -410,6 +477,15 @@
         <hr style="width: 100%; border: 0; border-top: 1px solid #eee; margin: 4px 0;">
 
         <!-- OPÇÕES: Movimentação (Mantidas, sem o título) -->
+        <button class="ann-action-btn" style="justify-content: flex-start; gap: 8px; width: 100%;" title="Agrupar Nó" onclick="criarPilhaDeIdeias()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px; height:16px;">
+                <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <path d="M2 15h10"></path>
+                <path d="M2 9h10"></path>
+            </svg>
+            <span style="font-size: 0.8rem;">Criar Pilha (Agrupar)</span>
+        </button>
         <button class="ann-action-btn" style="justify-content: flex-start; gap: 8px; width: 100%;" title="Mover Posição" onclick="acionarReordenarSub()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><polyline points="8 7 12 3 16 7"></polyline><line x1="12" y1="12" x2="12" y2="3"></line></svg>
             <span style="font-size: 0.8rem;">Reordenar Posição</span>
@@ -435,6 +511,33 @@
     <!-- TOAST DE FEEDBACK NÃO-INTRUSIVO -->
     <div id="toast-feedback" class="toast-feedback"></div>
     
+    <!-- Modal Nativo de Tarefas -->
+    <div id="tarefas-modal-backdrop" class="backdrop-seguro" style="display: none;" onclick="TaskManager.fecharModal()"></div>
+
+    <div id="modal-tarefas" class="crop-wizard-popup modal-tarefas-amplo fechavel-por-esc" style="display:none;">
+        <div class="wizard-header wizard-header--flex">
+            <span class="wizard-header__title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                Gerenciador de Tarefas
+            </span>
+            <button class="wizard-header__close-btn" onclick="TaskManager.fecharModal()">✕</button>
+        </div>
+        
+        <!-- Contêiner centralizado para ergonomia de leitura -->
+        <div class="tarefas-container-interno">
+            <!-- Blindagem Flexbox + Scroll Indicator nativo -->
+            <div class="doc-list-container scroll-indicator-container native-obs-list-amplo" id="native-obs-list">
+                <!-- Tarefas dinâmicas -->
+            </div>
+            
+            <div class="tarefas-actions-footer">
+                <button class="chip-btn chip-autora btn-adicionar-tarefa" onclick="TaskManager.adicionarTarefa()">
+                    + Adicionar Nova Tarefa
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- BACKDROP DEDICADO PARA EDIÇÃO DE TEXTO -->
     <div id="text-edit-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.40); z-index: 4000;" onclick="fecharModalEdicao()"></div>
     
@@ -442,19 +545,43 @@
     <div id="text-edit-modal" class="text-edit-modal" style="display:none;">
         <div class="edit-header">✏️ Editar Texto</div>
         
-        <div class="edit-toolbar">
-            <button type="button" class="edit-tool-btn" onclick="aplicarNegritoTextarea()" title="Negrito (Ctrl+B)">
-                <b>B</b> Negrito
+        <div class="edit-toolbar" id="edit-toolbar">
+            <button type="button" class="edit-tool-btn" onclick="JurisEditor.formatar('bold')" title="Negrito (Ctrl+B)">
+                <svg><use href="#icon-bold"></use></svg>
             </button>
-            <button type="button" class="edit-tool-btn" onclick="aplicarAumentoFonte(1)" title="Aumentar Fonte - 15%">
-                <span class="font-btn-label">A+</span>
+            <button type="button" class="edit-tool-btn" onclick="JurisEditor.formatar('italic')" title="Itálico (Ctrl+I)">
+                <svg><use href="#icon-italic"></use></svg>
             </button>
-            <button type="button" class="edit-tool-btn" onclick="aplicarAumentoFonte(2)" title="Aumentar Fonte - 35%">
-                <span class="font-btn-label-lg">A++</span>
+            <button type="button" class="edit-tool-btn" onclick="JurisEditor.formatar('underline')" title="Sublinhado (Ctrl+U)">
+                <svg><use href="#icon-underline"></use></svg>
+            </button>
+            
+            <div class="toolbar-divider"></div>
+            
+            <button type="button" class="edit-tool-btn" onclick="JurisEditor.aplicarTamanho('txt-largo-1')" title="Aumentar Fonte (Suave)">
+                <svg><use href="#icon-font-up"></use></svg>
+            </button>
+            <button type="button" class="edit-tool-btn" onclick="JurisEditor.aplicarTamanho('txt-largo-2')" title="Aumentar Fonte (Máximo)">
+                <svg><use href="#icon-font-up-lg"></use></svg>
+            </button>
+            
+            <div class="toolbar-divider"></div>
+            
+            <button type="button" class="edit-tool-btn" onclick="JurisEditor.copiarComo('html')" title="Copiar Formatado (Word)">
+                <svg><use href="#icon-copy-html"></use></svg>
+            </button>
+            <button type="button" class="edit-tool-btn" onclick="JurisEditor.copiarComo('markdown')" title="Copiar para IA (Markdown)">
+                <svg><use href="#icon-copy-md"></use></svg>
             </button>
         </div>
         
-        <textarea id="edit-text-input" class="edit-textarea" placeholder="Selecione um trecho e aplique o negrito..."></textarea>
+        <div id="edit-text-input"
+             class="edit-textarea rich-editor is-empty"
+             contenteditable="true"
+             role="textbox"
+             aria-multiline="true"
+             data-placeholder="Selecione um trecho e aplique formatação...">
+        </div>
         
         <div class="edit-actions">
             <button class="chip-btn chip-cancelar" onclick="fecharModalEdicao()">✕ Cancelar</button>
@@ -663,6 +790,33 @@
         </div>
     </div>
 
+    <!-- BACKDROP E MODAL: EDITAR PILHA (GRUPO DE IDEIAS) -->
+    <div id="pilha-modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.40); z-index: 4004;" onclick="TopicsManager.fecharModalPilha()"></div>
+
+    <div id="modal-editar-pilha" class="crop-wizard-popup" style="display:none; z-index: 4005; max-width: 450px; width: 90%;">
+        <div class="wizard-header">📚 Personalizar Grupo de Ideias</div>
+        
+        <p class="popup-label">Título do Grupo:</p>
+        <input type="text" id="input-pilha-titulo" class="topic-select" placeholder="Ex: Contradições da Testemunha">
+        
+        <!-- Novo Header Flex para acomodar o botão de Reset -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; margin-bottom: 4px;">
+            <p class="popup-label" style="margin: 0;">Teor das Ideias (Resumo):</p>
+            <button class="chip-btn" style="background: none; border: 1px dashed #cbd5e1; color: #64748b; padding: 2px 8px; font-size: 0.7rem; cursor: pointer;" onclick="document.getElementById('input-pilha-descricao').value = '';" title="Apaga a edição manual e volta para a concatenação automática do sistema.">
+                🔄 Usar Automático
+            </button>
+        </div>
+        
+        <p style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 6px;">Deixe vazio para o sistema extrair os textos automaticamente.</p>
+        <textarea id="input-pilha-descricao" class="popup-textarea" style="display:block; min-height: 80px; width: 100%; box-sizing: border-box;" rows="3"></textarea>
+        
+        <div class="wizard-actions" style="margin-top: 16px;">
+            <button class="chip-btn chip-cancelar" onclick="TopicsManager.fecharModalPilha()">✕ Cancelar</button>
+            <!-- O Botão Verde Limão está preservado aqui -->
+            <button class="chip-btn chip-autora" style="background: #84cc16; color: #ffffff; border-color: #65a30d;" onclick="TopicsManager.salvarEdicaoPilha()">✔ Salvar Grupo</button>
+        </div>
+    </div>
+
     <!-- ========================================== -->
     <!-- NOVOS MODAIS: TESES E SMART MOVE           -->
     <!-- ========================================== -->
@@ -806,10 +960,11 @@
     <script src="js/ai_store.js"></script>
     
     <script src="js/ai_backup-manager.js"></script>
-    <script src="js/ai_topics-manager.js"></script>
+    <script src="js/ai_topics-manager.js?v=3.1.1"></script>
     <script src="js/ai_balanca-manager.js"></script>
     <script src="js/ai_interaction-tools.js"></script>
     <script src="js/ai_audio-manager.js"></script>
+    <script src="js/ai_juris-editor.js"></script>
     <script src="js/ai_annotation-actions.js"></script>
     <script src="js/ai_export-manager.js"></script>
     <script src="js/ai_pdf-engine.js"></script>
@@ -876,7 +1031,7 @@
 
         <div id="box-modelo-existente" style="display: none;">
             <p class="popup-label">Buscar modelo existente:</p>
-            <input type="text" id="input-busca-modelo" class="topic-select" placeholder="Digite para buscar..." autocomplete="off" oninput="filtrarListaUIDebounced(this.value, 'lista-modelos-salvar')">
+            <input type="text" id="input-busca-modelo" class="topic-select" placeholder="Digite para buscar..." autocomplete="off" oninput="filtrarModelosSalvarDebounced(this.value)">
             <div id="lista-modelos-salvar" class="doc-list-container" style="margin-top: 8px; max-height: 120px;">
             </div>
         </div>
@@ -914,7 +1069,7 @@
                 <button class="chip-btn btn-limpar-ia" onclick="limparFiltroIAAcervo()">✕ Limpar</button>
             </div>
             
-            <div id="lista-acervo-geral" class="doc-list-container" style="max-height: 40vh; overflow-y: auto; position: relative;">
+            <div id="lista-acervo-geral" class="doc-list-container">
                 <!-- WRAPPER: Apenas este elemento sofrerá innerHTML = '' -->
                 <div id="acervo-items-wrapper" style="display: flex; flex-direction: column;"></div>
                 
@@ -1124,29 +1279,45 @@
     <!-- MODAL DO GERADOR DE CONTEXTO IA -->
     <div id="gerador-contexto-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.40); z-index: 4004;" onclick="fecharModalGeradorContexto()"></div>
 
-    <div id="modal-gerador-contexto" class="crop-wizard-popup" style="display:none; z-index: 4005; width: 90vw; max-width: 800px;">
+    <div id="modal-gerador-contexto" class="crop-wizard-popup" style="display:none; z-index: 4005;">
         <div class="wizard-header" style="display: flex; justify-content: space-between; align-items: center;">
             <span>🧩 Gerador de Contexto para IA</span>
             <button style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #64748b;" onclick="fecharModalGeradorContexto()">✕</button>
         </div>
         
-        <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 8px;">
+        <div class="gerador-contexto-body">
             
             <div>
                 <p class="popup-label">1. Histórico da Minuta (Opcional):</p>
                 <p style="font-size: 0.75rem; color: #666; margin-bottom: 4px;">Texto já redigido. (Salvo automaticamente na sessão)</p>
-                <textarea id="ctx-minuta-anterior" class="popup-textarea" style="display: block; min-height: 80px;" placeholder="Cole o relatório/fundamentação anterior aqui..." oninput="window.salvarRascunhoContextoDebounced()"></textarea>
+                <div style="position: relative;">
+                    <textarea id="ctx-minuta-anterior" class="popup-textarea" style="display: block; min-height: 80px; padding-right: 40px;" placeholder="Cole o relatório/fundamentação anterior aqui..." oninput="window.salvarRascunhoContextoDebounced()"></textarea>
+                    <!-- Z-index isolado e atributos A11y injetados -->
+                    <div style="position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 2;">
+                        <button type="button" class="icon-action-micro" aria-label="Colar da área de transferência" onclick="window.colarNaMinuta()" title="Colar da Área de Transferência">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                        </button>
+                        <button type="button" class="icon-action-micro danger" aria-label="Limpar texto atual" onclick="window.limparMinutaAnterior()" title="Limpar Texto Atual">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- NOVA SEÇÃO: USO INTERNO (CHATJT / FLASH) PROTEGIDA POR LGPD -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #fff3e0; padding: 12px; border-radius: 6px; border: 1px dashed #ffb74d; position: relative;">
                 <div style="grid-column: span 2; display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <p class="popup-label" style="color: #e65100; margin: 0;">⚠️ Documentos na Íntegra (Uso Interno - ChatJT)</p>
+                        <p class="popup-label" style="color: #e65100; margin: 0; display: flex; align-items: center; gap: 6px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                            Documentos na Íntegra (Uso Interno - ChatJT)
+                        </p>
                         <p style="font-size: 0.75rem; color: #d84315; margin-top: 4px;">Estes dados são enviados EXCLUSIVAMENTE pelo botão laranja. Eles são apagados ao trocar de processo.</p>
                     </div>
-                    <!-- Novo botão de Quick Clear -->
-                    <button class="chip-btn" style="background: white; border: 1px solid #ffcc80; color: #d84315; font-size: 0.75rem; padding: 4px 8px;" onclick="limparAreaInternaLGPD()">🧹 Limpar Área</button>
+                    <!-- Novo botão de Quick Clear atualizado -->
+                    <button type="button" class="icon-action-micro danger" aria-label="Limpar área segura" style="border-color: #ffcc80; color: #e65100; background: #fff3e0;" onclick="window.limparAreaInternaLGPD()" title="Limpar Área Segura">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
                 </div>
                 <div>
                     <p class="popup-label" style="color: #e65100;">Inteiro Teor da Sentença/Despacho:</p>
@@ -1178,17 +1349,23 @@
 
         <!-- REVISÃO: Ações segregadas com indicação passiva de segurança -->
         <div class="wizard-actions" style="align-items: center;">
-            <button class="chip-btn chip-cancelar" onclick="fecharModalGeradorContexto()">Cancelar</button>
+            <button type="button" class="chip-btn chip-cancelar" onclick="fecharModalGeradorContexto()">Cancelar</button>
             <div style="flex-grow: 1;"></div> <!-- Spacer -->
             
-            <button class="chip-btn" id="btn-copiar-contexto-interno" style="background: #f57c00; color: white; border: none; padding: 10px 16px; display: flex; flex-direction: column; align-items: center;" onclick="gerarECopiarContexto('interno')">
-                <span style="font-weight: bold;">📋 Copiar p/ ChatJT</span>
-                <span style="font-size: 0.65rem; opacity: 0.9;">Inclui Inteiros Teores</span>
+            <button type="button" class="chip-btn" id="btn-copiar-contexto-interno" style="background: #f57c00; color: white; border: none; padding: 10px 16px; display: flex; flex-direction: column; align-items: center;" onclick="window.gerarECopiarContexto('interno')">
+                <span style="font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <span class="btn-main-text">Copiar p/ ChatJT</span>
+                </span>
+                <span class="btn-sub-text" style="font-size: 0.65rem; opacity: 0.9;">Inclui Inteiros Teores</span>
             </button>
             
-            <button class="chip-btn chip-autora" id="btn-copiar-contexto-pro" style="background: var(--trt-blue); color: white; border: none; padding: 10px 16px; display: flex; flex-direction: column; align-items: center;" onclick="gerarECopiarContexto('pro')">
-                <span style="font-weight: bold;">🛡️ Copiar Pacote PRO</span>
-                <span style="font-size: 0.65rem; opacity: 0.9;">Ignora área amarela (Seguro)</span>
+            <button type="button" class="chip-btn chip-autora" id="btn-copiar-contexto-pro" style="background: var(--trt-blue); color: white; border: none; padding: 10px 16px; display: flex; flex-direction: column; align-items: center;" onclick="window.gerarECopiarContexto('pro')">
+                <span style="font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    <span class="btn-main-text">Copiar Pacote PRO</span>
+                </span>
+                <span class="btn-sub-text" style="font-size: 0.65rem; opacity: 0.9;">Ignora área amarela (Seguro)</span>
             </button>
         </div>
     </div>
@@ -1295,6 +1472,112 @@ Crie um sumário hierárquico enxuto com as Grandes Categorias e Subcategorias q
             <button id="btn-gerar-arquivo-exportacao" class="chip-btn chip-autora" style="background: var(--trt-blue); color: white; border: none; padding-left: 24px; padding-right: 24px;" onclick="ExportManager.gerarExportacaoPersonalizada()">
                 📥 Gerar Arquivo Exportação
             </button>
+        </div>
+    </div>
+
+    <!-- MODO DE LEITURA (CENTRALIZADO) -->
+    <div id="reading-mode-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(15, 37, 61, 0.85); backdrop-filter: blur(4px); z-index: var(--z-reading-backdrop);" onclick="TopicsManager.fecharModoLeitura()"></div>
+    
+    <div id="reading-mode-modal" class="crop-wizard-popup" style="display:none; z-index: var(--z-reading-modal); max-width: 800px; width: 90vw; max-height: 85vh; flex-direction: column; padding: 0; overflow: hidden; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        <div class="wizard-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #fdfdfd; border-bottom: 1px solid var(--border-color);">
+            <span id="reading-mode-title" style="font-weight: 700; color: var(--trt-blue); font-size: 1.1rem; display: flex; align-items: center; gap: 10px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px; flex-shrink:0;">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                </svg>
+                <span id="reading-mode-title-text">Modo de Leitura</span>
+            </span>
+            <button style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #64748b;" onclick="TopicsManager.fecharModoLeitura()">✕</button>
+        </div>
+    
+        <div id="reading-mode-content" style="flex: 1; overflow-y: auto; padding: 32px 40px; background: #ffffff; font-size: 1.1rem; line-height: 1.8; color: #2c2c2c;"></div>
+    
+        <div class="wizard-actions" style="padding: 16px 24px; background: #f8f9fa; border-top: 1px solid var(--border-color); justify-content: space-between;">
+            <button class="chip-btn chip-cancelar" onclick="TopicsManager.fecharModoLeitura()">Fechar (Esc)</button>
+            <button class="chip-btn chip-autora" style="background: var(--trt-blue); color: white; border: none; padding: 10px 20px; font-weight: bold; display: flex; gap: 8px; align-items: center;" onclick="TopicsManager.copiarTextoModoLeitura()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copiar Inteligente (Docs / IA)
+            </button>
+        </div>
+    </div>
+
+    <!-- MODO DE LEITURA (CENTRALIZADO) -->
+    <div id="reading-mode-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(15, 37, 61, 0.85); backdrop-filter: blur(4px); z-index: var(--z-reading-backdrop);" onclick="TopicsManager.fecharModoLeitura()"></div>
+    
+    <div id="reading-mode-modal" class="crop-wizard-popup" style="display:none; z-index: var(--z-reading-modal); max-width: 800px; width: 90vw; max-height: 85vh; flex-direction: column; padding: 0; overflow: hidden; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        <div class="wizard-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #fdfdfd; border-bottom: 1px solid var(--border-color);">
+            <span id="reading-mode-title" style="font-weight: 700; color: var(--trt-blue); font-size: 1.1rem; display: flex; align-items: center; gap: 10px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px; flex-shrink:0;">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                </svg>
+                <span id="reading-mode-title-text">Modo de Leitura</span>
+            </span>
+            <button style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #64748b;" onclick="TopicsManager.fecharModoLeitura()">✕</button>
+        </div>
+    
+        <div id="reading-mode-content" style="flex: 1; overflow-y: auto; padding: 32px 40px; background: #ffffff; font-size: 1.1rem; line-height: 1.8; color: #2c2c2c;"></div>
+    
+        <div class="wizard-actions" style="padding: 16px 24px; background: #f8f9fa; border-top: 1px solid var(--border-color); justify-content: space-between;">
+            <button class="chip-btn chip-cancelar" onclick="TopicsManager.fecharModoLeitura()">Fechar (Esc)</button>
+            <button class="chip-btn chip-autora" style="background: var(--trt-blue); color: white; border: none; padding: 10px 20px; font-weight: bold; display: flex; gap: 8px; align-items: center;" onclick="TopicsManager.copiarTextoModoLeitura()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copiar Inteligente (Docs / IA)
+            </button>
+        </div>
+    </div>
+
+    <!-- BACKDROP E MODAL: VISÃO ESTRUTURADA E MINUTA -->
+    <div id="outline-view-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(15, 37, 61, 0.85); backdrop-filter: blur(4px); z-index: var(--z-outline-backdrop);" onclick="OutlineViewManager.fechar()"></div>
+    
+    <!-- VISÃO ESTRUTURADA -->
+    <div id="outline-view-modal" class="doc-modal fechavel-por-esc" style="display:none;">
+        <div class="doc-modal__header">
+            <span class="doc-modal__title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                Visão Estruturada (Documento Linear)
+            </span>
+            <button class="doc-modal__close-btn" aria-label="Fechar" onclick="OutlineViewManager.fechar()">✕</button>
+        </div>
+        
+        <div id="outline-view-content" class="doc-modal__content"></div>
+
+        <div class="doc-modal__footer">
+            <div class="doc-modal__actions">
+                <button class="chip-btn icon-only-btn juris-tooltip" data-tooltip="Copiar p/ IA (Markdown)" aria-label="Copiar como Markdown" onclick="OutlineViewManager.copiarComoMarkdown()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                </button>
+                <button class="chip-btn chip-autora icon-only-btn juris-tooltip" data-tooltip="Copiar Texto Formatado (Word/PJe)" aria-label="Copiar Formatado" onclick="OutlineViewManager.copiarTudo()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BACKDROP E MODAL: VISÃO DE MINUTA -->
+    <div id="minuta-view-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(15, 37, 61, 0.85); backdrop-filter: blur(4px); z-index: var(--z-outline-backdrop);" onclick="MinutaViewManager.fechar()"></div>
+
+    <!-- VISÃO DE MINUTA -->
+    <div id="minuta-view-modal" class="doc-modal fechavel-por-esc" style="display:none;">
+        <div class="doc-modal__header">
+            <span class="doc-modal__title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                Visão de Minuta (Leitura Fluida)
+            </span>
+            <button class="doc-modal__close-btn" aria-label="Fechar" onclick="MinutaViewManager.fechar()">✕</button>
+        </div>
+        
+        <div id="minuta-view-content" class="doc-modal__content"></div>
+
+        <div class="doc-modal__footer">
+            <div class="doc-modal__actions">
+                <button class="chip-btn icon-only-btn juris-tooltip" data-tooltip="Copiar p/ IA (Markdown)" aria-label="Copiar como Markdown" onclick="MinutaViewManager.copiarComoMarkdown()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                </button>
+                <button class="chip-btn chip-autora icon-only-btn juris-tooltip" data-tooltip="Copiar Texto da Minuta" aria-label="Copiar Minuta" onclick="MinutaViewManager.copiarTexto()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+            </div>
         </div>
     </div>
 

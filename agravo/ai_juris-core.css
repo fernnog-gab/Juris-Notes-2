@@ -42,7 +42,13 @@
     --z-text-edit-modal: 4001;
     --z-abas-modal-backdrop: 4004;
     --z-abas-modal: 4005;
+    /* NOVAS VARIÁVEIS - OUTLINE */
+    --z-outline-backdrop: 4050;
+    --z-outline-modal: 4051;
     --z-splash: 9999;
+    
+    /* Variável da Espinha Dorsal (Vermelho sólido primário) */
+    --theme-spine-line: #d32f2f;
 }
 
 *, *::before, *::after {
@@ -78,6 +84,7 @@ body.theme-anotacoes-white {
 body.theme-anotacoes-jasmine {
     --notes-bg-color: var(--theme-bg-jasmine);
     --notes-marker-border: var(--theme-border-white);
+    --theme-spine-line: #b71c1c; /* Vermelho sutilmente mais escuro para contraste no creme */
 }
 
 @media (min-width: 768px) {
@@ -281,10 +288,41 @@ body.theme-anotacoes-jasmine {
 
 .tabs {
     display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
     position: relative;
     background: #dde3ea;
     border-bottom: 2px solid var(--trt-blue);
     flex-shrink: 0;
+}
+
+.tabs-nav {
+    display: flex;
+    flex: 1;
+}
+
+.header-tools-area {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    background-color: #121820; /* Slate Dark */
+    border-radius: 20px 20px 0 0;
+    padding: 6px 16px;
+    margin-right: 12px;
+    height: 44px;
+    gap: 8px;
+}
+
+.tool-separator {
+    width: 1px;
+    height: 20px;
+    background-color: rgba(255, 255, 255, 0.25); /* Fio de luz nítido */
+    margin: 0 4px;
+}
+
+@media (max-width: 768px) {
+    .header-tools-area { padding: 4px 8px; margin-right: 4px; gap: 4px; }
+    .tool-separator { margin: 0; }
 }
 
 .tab-btn {
@@ -724,4 +762,23 @@ body #btn-acervo-modelos:focus {
     transform: translateY(0);
     box-shadow: var(--shadow-sm);
     transition: all 0.05s ease-in;
+}
+
+/* =========================================================
+   TOKENS SEMÂNTICOS DE CARREGAMENTO (SKELETON & SPINNER)
+   Garante adaptação de tema entre Fundo Branco e Jasmine
+   ========================================================= */
+
+/* Fallback Global (Tema Branco padrão) */
+:root {
+    --pdf-skeleton-bg: #f0f4f8;
+    --pdf-skeleton-highlight: rgba(255, 255, 255, 0.7);
+    --pdf-skeleton-spinner: var(--trt-blue, #1a3a5c);
+}
+
+/* Sobrescrita dinâmica quando o Tema Jasmine está ativo no <body> */
+body.theme-processo-jasmine {
+    --pdf-skeleton-bg: #f7d99a; /* Dourado muito suave, baixo contraste com fundo */
+    --pdf-skeleton-highlight: rgba(255, 248, 225, 0.65); /* Feixe de luz quente e sutil */
+    --pdf-skeleton-spinner: #a9712a; /* Marrom sóbrio para o spinner, mantendo elegância */
 }

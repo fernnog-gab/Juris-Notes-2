@@ -56,18 +56,18 @@ body.modo-extrator-ativo #crop-overlay { display: block; cursor: crosshair; back
    ESTILOS DO ALFINETE VISUAL E ESTADO DO BOTÃO
    ================================================ */
 
-/* Estado concluído do botão Extrator (Amarelo) - Alta especificidade sem !important */
+/* Estado concluído do botão Extrator (Verde-Limão AI) - Alta especificidade sem !important */
 button#btn-ferramenta-extrator.extrator-completo:not(:disabled) {
-    background-color: #fbc02d;
-    border-color: #f57f17;
-    color: white;
-    box-shadow: 0 4px 10px rgba(251, 192, 45, 0.4);
+    background-color: #A3E635; /* Verde-Limão base da identidade AI */
+    border-color: #8ce015;     /* Borda levemente mais escura */
+    color: #000000;            /* Fonte escura para contraste */
+    box-shadow: 0 4px 10px rgba(163, 230, 53, 0.4);
 }
 
-/* Garante que o ícone interno respeite a inversão de cores (cobre fill e stroke) */
+/* Garante que o ícone interno (Alfinete) respeite o contraste (preto sobre verde) */
 button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
-    stroke: white;
-    fill: white;
+    stroke: #000000;
+    fill: none; /* Mantém o padrão de linha vazada, caso o ícone exija, ou mude para #000000 se quiser preenchido */
 }
 
 /* Refatoração da classe existente: Pino colorido por dado (Inline Style) */
@@ -117,7 +117,7 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 .doc-btn.neutro { color: #455a64; background: #f5f7f8; }
 .doc-highlight { font-size: 0.9rem; font-weight: 800; margin-bottom: 12px; color: var(--trt-blue-mid); text-align: center; background: var(--trt-light-bg); padding: 6px; border-radius: 4px; }
 
-#classification-popup { position: fixed; background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; box-shadow: var(--shadow-md); z-index: var(--z-classification-popup); display: none; flex-direction: column; gap: 8px; min-width: 220px; }
+#classification-popup { position: fixed; background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; box-shadow: var(--shadow-md); z-index: var(--z-classification-popup); display: none; flex-direction: column; gap: 8px; min-width: 420px; }
 .popup-label { font-size: 0.74rem; color: #999; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 .topic-select { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-family: inherit; font-size: 0.84rem; color: var(--text-dark); background: #fafafa; cursor: pointer; outline: none; transition: border-color 0.2s; }
 .topic-select:focus { border-color: var(--trt-blue-mid); background: white; }
@@ -147,7 +147,7 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 .ann-action-btn.btn-intent.active-intent { background-color: #f5f5f5; border-left: 3px solid var(--trt-blue-mid); border-radius: 0 6px 6px 0; font-weight: bold; }
 
 #wizard-backdrop { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.40); z-index: var(--z-wizard-backdrop); }
-.crop-wizard-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28); z-index: var(--z-wizard-modal); min-width: 360px; max-width: 90vw; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.crop-wizard-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28); z-index: var(--z-wizard-modal); min-width: 420px; max-width: 90vw; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .wizard-header { font-size: 1.05rem; font-weight: 800; color: var(--trt-blue); border-bottom: 2px solid var(--trt-light-bg); padding-bottom: 8px; margin-bottom: 4px; }
 .wizard-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; padding-top: 12px; border-top: 1px solid #eee; }
 .crop-preview-container { text-align: center; background: var(--trt-light-bg); border: 2px dashed var(--border-color); border-radius: 8px; padding: 12px; max-height: 40vh; overflow-y: auto; }
@@ -157,8 +157,9 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 .text-edit-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 12px 48px rgba(0,0,0,0.28); z-index: var(--z-text-edit-modal); min-width: 400px; max-width: 90vw; display: flex; flex-direction: column; gap: 12px; }
 .edit-header { font-size: 1.05rem; font-weight: 800; color: var(--trt-blue); border-bottom: 2px solid var(--trt-light-bg); padding-bottom: 8px; }
 .edit-toolbar { display: flex; gap: 8px; margin-bottom: 4px; }
-.edit-tool-btn { background: #fff; border: 1px solid #bbb; border-radius: 6px; padding: 6px 12px; cursor: pointer; color: var(--trt-blue); font-size: 0.9rem; transition: background 0.2s; }
-.edit-tool-btn:hover { background: #f0f4f8; }
+.edit-tool-btn { background: #fff; border: 1px solid #bbb; border-radius: 6px; cursor: pointer; color: var(--trt-blue); transition: all 0.2s ease; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.edit-tool-btn svg { width: 18px; height: 18px; pointer-events: none; }
+.edit-tool-btn:hover { background: #f0f4f8; border-color: var(--trt-blue-mid); color: var(--trt-blue-mid); }
 .edit-textarea { width: 100%; min-height: 140px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-family: inherit; font-size: 0.9rem; line-height: 1.5; outline: none; resize: vertical; }
 .edit-textarea:focus { border-color: var(--trt-blue-mid); }
 .edit-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; padding-top: 12px; border-top: 1px solid #eee; }
@@ -171,8 +172,6 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 /* Tipografia Extra no Modal Markdown */
 .txt-largo-1 { font-size: 1.15em; line-height: 1.6; display: inline; }
 .txt-largo-2 { font-size: 1.35em; line-height: 1.6; display: inline; }
-.font-btn-label { font-size: 1.1em; font-weight: bold; }
-.font-btn-label-lg { font-size: 1.25em; font-weight: 900; }
 
 /* Correção Backup Header */
 .wizard-header.backup-header { background: var(--trt-blue); color: white; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px; margin: -20px -20px 16px -20px; border-radius: 12px 12px 0 0; border-bottom: none; }
@@ -193,7 +192,34 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 #active-audio-indicator.pending-audio { background: #f57c00; box-shadow: 0 2px 6px rgba(245, 124, 0, 0.4); animation: pulse-mic-pending 2.5s infinite; }
 @keyframes pulse-mic-pending { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(245, 124, 0, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 124, 0, 0); } }
 
-#audio-player-panel { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: white; padding: 16px; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.25); z-index: var(--z-audio-player); border: 1px solid var(--border-color); width: 520px; max-width: 90vw; max-height: 85vh; overflow-y: auto; flex-direction: column; gap: 12px; }
+#audio-player-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+
+    /* Elevação forte para separar visualmente do PDF sem precisar de backdrop bloqueante */
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(26, 58, 92, 0.08);
+
+    z-index: var(--z-audio-player);
+
+    width: 640px;
+    max-width: 90vw;
+    max-height: 85vh;
+    overflow-y: auto;
+
+    display: flex; /* JS só alterna para 'flex'/'none', nunca conflita */
+    flex-direction: column;
+    gap: 16px;
+}
 .audio-header { display: flex; justify-content: space-between; font-weight: 700; color: var(--trt-blue); border-bottom: 1px solid #eee; padding-bottom: 8px; }
 .audio-header button { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #999; }
 .audio-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -278,3 +304,733 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 .export-option-details { display: flex; flex-direction: column; }
 .export-option-title { font-size: 0.9rem; font-weight: 700; color: var(--trt-blue); }
 .export-option-subtitle { font-size: 0.75rem; color: #666; margin-top: 2px; }
+
+/* ================================================
+   OTIMIZAÇÕES DIMENSIONAIS (MODAIS DE IA E ACERVO)
+   ================================================ */
+
+/* 1. Shell (Contêiner Pai) */
+#modal-gerador-contexto {
+    width: 92vw;
+    height: 88vh;
+    max-width: 1300px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Trava de segurança: impede scroll duplo com a classe base */
+}
+
+/* 2. Zonas Rígidas (Preserva Cabeçalho e Rodapé de colapsos) */
+#modal-gerador-contexto > .wizard-header,
+#modal-gerador-contexto > .wizard-actions {
+    flex-shrink: 0;
+}
+
+/* 3. Zona Fluida (Miolo de Conteúdo) */
+.gerador-contexto-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 8px;
+    flex: 1;
+    min-height: 0; /* Trava arquitetural do Flexbox: permite que o scroll funcione */
+    overflow-y: auto;
+    padding-right: 8px;
+    padding-bottom: 12px;
+}
+
+/* 4. UX Quick Win: Aproveitamento da expansão vertical */
+#ctx-teor-sentenca,
+#ctx-teor-recurso {
+    min-height: 180px !important; /* Aumenta a área de colagem visual */
+}
+
+/* ================================================
+   ACERVO DE MODELOS — espelha exatamente o comportamento
+   dimensional do painel Dossiê Recursal (#balanca-painel).
+   ================================================ */
+#modal-acervo-inserir,
+#modal-editar-modelo-acervo {
+    width: 92vw;
+    height: 88vh;
+    max-width: 1300px;
+    display: flex;
+    flex-direction: column;
+}
+
+#acervo-list-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0; /* trava arquitetural: impede que o conteúdo empurre o modal para fora da tela */
+}
+
+#lista-acervo-geral {
+    flex: 1;
+    min-height: 0;
+    max-height: none; /* sem !important: não há mais regra inline ou de outro arquivo para vencer */
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    position: relative; /* preserva o posicionamento do spinner .acervo-loader, antes garantido pelo inline removido */
+    padding-right: 8px;
+}
+
+/* ================================================
+   EDITOR RICO (WYSIWYG) - contenteditable
+   ================================================ */
+/* Correção Raiz do Problema WYSIWYG e Containers Roláveis */
+.edit-textarea.rich-editor,
+#native-obs-list {
+    flex: 1 1 auto;
+    min-height: 0; /* Crítico para forçar o limite do container pai */
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain; /* Impede o vazamento de scroll para o body */
+}
+
+.edit-textarea.rich-editor {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    outline: none;
+}
+
+.edit-textarea.rich-editor.is-empty::before {
+    content: attr(data-placeholder);
+    color: #999;
+    pointer-events: none;
+    display: block;
+}
+
+.edit-textarea.rich-editor b,
+.edit-textarea.rich-editor strong { font-weight: 800; color: var(--trt-blue); }
+.edit-textarea.rich-editor i,
+.edit-textarea.rich-editor em { font-style: italic; }
+.edit-textarea.rich-editor u { text-decoration: underline; text-underline-offset: 3px; }
+
+.toolbar-divider {
+    width: 1px;
+    align-self: stretch;
+    background-color: var(--border-color);
+    margin: 0 4px;
+}
+
+/* ================================================
+   DROPDOWN CUSTOMIZADO DE TÓPICOS (UI E ACESSIBILIDADE)
+   ================================================ */
+
+/* Classe universal de acessibilidade (Oculta visualmente, mantém no Accessibility Tree) */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+.juris-custom-select {
+    position: relative;
+    width: 100%;
+    user-select: none;
+}
+
+.jcs-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: #fafafa;
+    font-size: 0.84rem;
+    color: var(--text-dark);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    outline: none;
+}
+
+.jcs-trigger:hover, .jcs-trigger:focus-visible {
+    border-color: var(--trt-blue-mid);
+    background: #ffffff;
+    box-shadow: 0 0 0 2px rgba(26, 58, 92, 0.2);
+}
+
+.jcs-options-portal {
+    position: fixed; 
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    z-index: 100000;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-bottom: 16px; 
+    display: flex;
+    flex-direction: column;
+}
+
+.jcs-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.15s;
+    outline: none;
+}
+
+.jcs-option:last-child {
+    border-bottom: none;
+}
+
+.jcs-option:hover, .jcs-option.is-focused {
+    background: var(--trt-light-bg);
+}
+
+.jcs-color-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+.jcs-placeholder-text {
+    color: #888;
+}
+
+/* ================================================
+   MICROAÇÕES (GERADOR DE CONTEXTO)
+   ================================================ */
+.icon-action-micro {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #64748b;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    padding: 0;
+}
+.icon-action-micro:hover {
+    background: var(--trt-light-bg);
+    color: var(--trt-blue);
+    border-color: var(--trt-blue-mid);
+    transform: translateY(-1px);
+}
+.icon-action-micro svg { width: 14px; height: 14px; }
+.icon-action-micro.danger:hover {
+    color: #d32f2f !important;
+    border-color: #ef9a9a !important;
+    background: #fff5f5 !important;
+}
+
+/* ================================================
+   HEADER TOOLS AREA (Slate Dark & Empty States)
+   ================================================ */
+
+/* 0. Estilos do Berço Fantasma (Microfone) */
+.header-tools-area .ghost-mic-wrapper {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+}
+
+.header-tools-area .ghost-mic-wrapper .ghost-svg {
+    width: 16px;
+    height: 16px;
+    color: rgba(255, 255, 255, 0.2);
+    position: absolute;
+}
+
+.header-tools-area #active-audio-indicator {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    z-index: 2;
+    box-shadow: 0 2px 6px rgba(229, 57, 53, 0.4);
+}
+
+.header-tools-area #active-audio-indicator svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 1. Refinamento Visual do Contrato (Paleta Agravo: Verde Limão, Ícone Escuro e Blindagem) */
+.header-tools-area #btn-contrato-trabalho {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    
+    /* Configurações de Flexbox para centralização total */
+    display: flex !important; /* Proteção contra manipulação JS */
+    justify-content: center;
+    align-items: center; /* NOVO: Centraliza verticalmente */
+    
+    border: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    background-color: #A3E635; /* Verde Limão (AI) */
+    color: #1a1a1a; 
+    position: relative; 
+    
+    /* NOVO: Adicionado para deixar o efeito hover mais fluido */
+    transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.header-tools-area #btn-contrato-trabalho:hover {
+    background-color: #8ce015; /* Verde mais vibrante no hover */
+    transform: scale(1.08);
+}
+
+.header-tools-area #btn-contrato-trabalho .pill-icon {
+    margin-right: 0;
+    background: transparent;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Oculta o texto para manter o visual minimalista */
+.header-tools-area #contrato-status-text {
+    display: none;
+}
+
+/* Badge de Feedback Visual (Sinal Verde de Dados Salvos) adaptado ao novo fundo */
+.header-tools-area #btn-contrato-trabalho.has-data::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    background-color: #39FF14;
+    border: 2px solid #121820; /* Borda sincronizada com o painel Slate Dark */
+    border-radius: 50%;
+    box-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+
+.header-tools-area #btn-contrato-trabalho.alerta-prescricao::after {
+    background-color: #ff5252;
+}
+
+/* 2. Visibilidade Global e Ajuste do Cronômetro */
+.header-tools-area #efficiency-tracker-container {
+    display: flex !important; /* Proteção contra manipulação JS */
+}
+
+.header-tools-area #efficiency-tracker-pill {
+    height: 28px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.header-tools-area #tracker-bg-mask {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+/* ================================================
+   VISÃO DE MINUTA (LEITURA FLUIDA)
+   ================================================ */
+
+.minuta-text-block { margin-bottom: 12px; color: #1e293b; }
+.minuta-text-block p { margin-bottom: 0.5em; }
+
+.minuta-comando-card {
+    background-color: #fdfbf7;
+    border: 1px solid #e8e2c8;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    margin-top: 8px;
+    color: #4a4533;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.minuta-comando-card::before {
+    content: "Comando Direto / Instrução";
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #c62828;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+}
+
+/* =========================================================
+   COMPONENTE BASE: MODAIS DE DOCUMENTO (OUTLINE & MINUTA)
+   ========================================================= */
+.doc-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 92vw;
+    max-width: 1300px;
+    height: 88vh;
+    max-height: 88vh;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: var(--z-outline-modal);
+}
+
+.doc-modal__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: #fdfdfd;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.doc-modal__title {
+    font-weight: 700;
+    color: var(--trt-blue);
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.doc-modal__title svg {
+    width: 20px;
+    height: 20px;
+}
+
+.doc-modal__close-btn {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #64748b;
+    padding: 4px;
+    transition: color 0.2s;
+}
+
+.doc-modal__close-btn:hover { color: #d32f2f; }
+
+.doc-modal__content {
+    flex: 1;
+    overflow-y: auto;
+    background: #ffffff;
+    color: #2c2c2c;
+    font-size: 1.05rem;
+    line-height: 1.7;
+    padding: 24px 32px;
+}
+
+.doc-modal__footer {
+    padding: 16px 24px;
+    background: #f8f9fa;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.doc-modal__actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+/* Modificadores Visuais e Utilitários */
+.doc-modal__topic-title {
+    font-weight: 700;
+    color: #6a1b9a;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+}
+
+.doc-modal__topic-subtitle {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.icon-only-btn {
+    width: 44px;
+    height: 44px;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.icon-only-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.icon-only-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* =========================================================
+   TOOLTIP CUSTOMIZADO GLOBAL (ZERO JS)
+   ========================================================= */
+.juris-tooltip {
+    position: relative;
+}
+
+.juris-tooltip::before,
+.juris-tooltip::after {
+    position: absolute;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease 0.1s, visibility 0.2s ease 0.1s, transform 0.2s ease 0.1s;
+    pointer-events: none;
+    z-index: 10000;
+}
+
+.juris-tooltip::before {
+    content: attr(data-tooltip);
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    background-color: #2c3e50;
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.juris-tooltip::after {
+    content: '';
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    border-width: 6px;
+    border-style: solid;
+    border-color: #2c3e50 transparent transparent transparent;
+}
+
+.juris-tooltip:hover::before,
+.juris-tooltip:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* =========================================================
+   UI MODAL NATIVO DE TAREFAS E SCROLL INDICATOR
+   ========================================================= */
+
+/* Indicador visual de scroll (UX) via CSS Moderno (Shadow inset no topo/base) */
+.scroll-indicator-container {
+    background: 
+        linear-gradient(#f8fafc 30%, rgba(248,250,252,0)),
+        linear-gradient(rgba(248,250,252,0), #f8fafc 70%) 0 100%,
+        radial-gradient(farthest-side at 50% 0, rgba(0,0,0,.1), rgba(0,0,0,0)),
+        radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,.1), rgba(0,0,0,0)) 0 100%;
+    background-repeat: no-repeat;
+    background-color: #f8fafc;
+    background-size: 100% 40px, 100% 40px, 100% 14px, 100% 14px;
+    background-attachment: local, local, scroll, scroll;
+}
+
+/* =========================================================
+   MODAL DE TAREFAS (EXPANDIDO E ERGONÔMICO)
+   ========================================================= */
+
+/* Garantia de Backdrop isolado */
+.backdrop-seguro {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: var(--z-abas-modal-backdrop, 4004);
+}
+
+/* Modificador Estrutural do Modal */
+.modal-tarefas-amplo {
+    z-index: var(--z-abas-modal, 4005);
+    width: 92vw;
+    max-width: 1200px;
+    height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Isolamento do Header do Modal */
+.wizard-header--flex {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.wizard-header__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wizard-header__close-btn {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #64748b;
+    transition: color 0.2s ease;
+}
+.wizard-header__close-btn:hover { color: #d32f2f; }
+
+/* Contêiner Interno: Trava ergonômica para leitura de tarefas */
+.tarefas-container-interno {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding-bottom: 16px;
+}
+
+.native-obs-list-amplo {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 16px;
+    margin-top: 12px;
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+}
+
+.tarefas-actions-footer {
+    flex-shrink: 0;
+    margin-top: 12px;
+}
+
+.btn-adicionar-tarefa {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.95rem;
+    border: 1px dashed var(--trt-blue);
+    background: transparent;
+    color: var(--trt-blue);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.btn-adicionar-tarefa:hover {
+    background: rgba(26, 58, 92, 0.05);
+}
+
+/* UI Tarefas (Migração e Ajustes Ergonômicos) */
+.native-task-item {
+    display: flex; 
+    align-items: center; 
+    background: #fff; 
+    padding: 12px 14px; 
+    border-radius: 8px; 
+    margin-bottom: 8px; 
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+.native-task-item input[type="text"] {
+    flex: 1; 
+    border: none; 
+    outline: none; 
+    font-size: 0.95rem; 
+    color: var(--text-dark); 
+    background: transparent; 
+    padding: 4px 10px;
+}
+.native-task-item input[type="checkbox"] { margin-right: 12px; accent-color: var(--trt-blue); cursor: pointer; width: 16px; height: 16px; }
+.native-task-item.completed { opacity: 0.5; background-color: #f1f5f9; }
+.native-task-item.completed input[type="text"] { text-decoration: line-through; color: #64748b; }
+.topic-circle-indicator { width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; cursor: pointer; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+/* =========================================================
+   REVISÃO ARQUITETURAL: EFEITOS DE CARREGAMENTO DO PDF
+   Refatorado para Theme-Aware, Aceleração de GPU e A11y
+   ========================================================= */
+
+/* Fundo inteligente reativo ao tema */
+.pdf-page-container[data-loaded="false"],
+.pdf-page-container[data-loaded="loading"] {
+    background-color: var(--pdf-skeleton-bg) !important; 
+    position: relative;
+    overflow: hidden;
+}
+
+/* Shimmer com Aceleração de GPU (Transform) */
+.pdf-page-container[data-loaded="false"]::before,
+.pdf-page-container[data-loaded="loading"]::before {
+    content: "";
+    position: absolute;
+    top: 0; 
+    left: 0; /* Ajustado para início exato */
+    width: 100%; 
+    height: 100%;
+    /* Utiliza os tokens injetados pelo ai_juris-core.css */
+    background: linear-gradient(90deg, transparent, var(--pdf-skeleton-highlight), transparent);
+    /* Desloca para fora da tela inicialmente */
+    transform: translateX(-150%);
+    animation: pdf-shimmer-gpu 1.5s infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Spinner Inteligente (Reage à cor base do tema) */
+.pdf-page-container[data-loaded="loading"]::after {
+    border-top-color: var(--pdf-skeleton-spinner) !important;
+}
+
+/* Keyframe baseado em matemática vetorial (GPU) */
+@keyframes pdf-shimmer-gpu {
+    0% { transform: translateX(-150%); }
+    100% { transform: translateX(150%); }
+}
+
+/* Acessibilidade: Respeito à preferência do SO do usuário e prevenção de fadiga de CPU */
+@media (prefers-reduced-motion: reduce) {
+    .pdf-page-container[data-loaded="false"]::before,
+    .pdf-page-container[data-loaded="loading"]::before {
+        animation: none !important;
+        opacity: 0.5;
+        transform: translateX(0); /* Fixa o gradiente suave no centro */
+    }
+    
+    .pdf-page-container[data-loaded="loading"]::after {
+        animation: none !important;
+        /* Dá um feedback visual sutil de opacidade ao invés de giro brusco */
+        opacity: 0.6; 
+    }
+}

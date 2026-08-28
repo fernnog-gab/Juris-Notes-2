@@ -7,11 +7,60 @@
    1. FICHÁRIO E SISTEMA DE ABAS INTERNAS
    ================================================ */
 #history-container { flex: 1; overflow: auto; padding: 20px 24px; display: none; }
-.topics-tab-bar { display: flex; flex-wrap: wrap; margin-bottom: 0; padding-top: 4px; }
-.topic-tab-btn { padding: 8px 12px; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); border-bottom: none; margin-right: 4px; margin-bottom: -3px; color: #2c2c2c; border-radius: 6px 6px 0 0; font-size: 0.85rem; font-weight: 500; transition: filter 0.2s, transform 0.1s; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; z-index: 1; }
-.topic-tab-btn:hover:not(.active) { filter: brightness(0.95); }
-.topic-tab-btn.active { font-weight: 800; color: #000; z-index: 5; padding-bottom: 12px; box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.4); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.topics-content-area { padding: 18px 8px; overflow-y: auto; border-radius: 0 6px 6px 6px; min-height: 200px; position: relative; z-index: 2; background-color: var(--notes-bg-color); transition: background-color 0.3s ease; }
+.topics-tab-bar { 
+    display: flex; 
+    flex-wrap: nowrap; 
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin-bottom: 0; 
+    padding-top: 4px; 
+    scrollbar-width: none; /* Esconde no Firefox */
+    position: relative;
+    z-index: 10;
+}
+.topics-tab-bar::-webkit-scrollbar { 
+    display: none; /* Esconde no Chrome/Edge/Safari */
+}
+.topic-tab-btn { 
+    position: relative; 
+    flex: 0 0 auto;
+    padding: 8px 16px; 
+    cursor: pointer; 
+    margin-right: 4px; 
+    margin-bottom: -3px; 
+    min-width: 80px;
+    max-width: 180px; 
+    border-radius: 8px 8px 0 0; 
+    font-size: 0.85rem; 
+    font-weight: 600; 
+    overflow: visible; 
+    background: var(--tab-bg, #eee);
+    color: var(--tab-color, #333);
+    background-image: linear-gradient(to bottom, rgba(255,255,255,0.25) 0%, rgba(0,0,0,0.05) 100%);
+    border: 1px solid rgba(0,0,0,0.1);
+    border-top: 3px solid transparent; 
+    border-bottom: none;
+    transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), filter 0.2s; 
+    z-index: 1;
+    display: flex;
+    align-items: center;
+}
+.tab-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%; }
+.topic-tab-btn:hover:not(.active) { filter: brightness(1.05); transform: translateY(-1px); }
+.topic-tab-btn.active { 
+    font-weight: 800; 
+    z-index: 5; 
+    padding-bottom: 11px; 
+    background: var(--notes-bg-color, #ffffff); /* A MÁGICA DA FUSÃO COM O PAPEL AQUI */
+    background-image: none; 
+    color: var(--trt-blue, #1a202c);
+    border: 1px solid #dde3ea;
+    border-top: 3px solid var(--tab-bg); 
+    border-bottom: none;
+    transform: translateY(-2px);
+    box-shadow: 0 -3px 8px rgba(0,0,0,0.06); 
+}
+.topics-content-area { padding: 18px 8px; overflow-y: auto; border-radius: 0 6px 6px 6px; min-height: 200px; position: relative; z-index: 2; background-color: var(--notes-bg-color); border-top: 3px solid var(--active-tab-color, #dde3ea); box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: background-color 0.3s ease; }
 .empty-state { text-align: center; color: #aab; font-size: 0.88rem; line-height: 1.7; margin-top: 40px; padding: 0 20px; }
 .empty-state strong { color: var(--trt-blue-mid); font-size: 1.1rem; }
 
@@ -51,6 +100,14 @@
 .timeline-item.align-right { align-self: flex-end; }
 .connector-wrapper { width: 100%; height: 48px; z-index: 1; }
 .connector-wrapper svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+.spine-connection {
+    stroke: var(--theme-spine-line);
+    stroke-width: 2px;
+    fill: none;
+    stroke-linecap: round; /* Arredonda as pontas das hastes em 'T' */
+    transition: stroke 0.3s ease; /* Transição suave caso o usuário alterne temas */
+}
 
 /* ================================================
    3. CARDS DE ANOTAÇÃO E AGRUPAMENTOS
@@ -154,7 +211,43 @@
 .sub-annotation-item { position: relative; display: flex; align-items: center; }
 .timeline-item-master.align-right .sub-annotation-item { flex-direction: row-reverse; }
 
-.sub-annotation-card { background-color: #fffdf2; border: 1px solid #e8e2c8; border-radius: 8px; padding: 14px 16px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04); font-size: 0.85rem; color: #3a3520; line-height: 1.6; position: relative; width: 100%; }
+.sub-annotation-card { background-color: #fffdf2; border: 1px solid #e8e2c8; border-radius: 8px; padding: 14px 16px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04); font-size: 0.85rem; color: #3a3520; line-height: 1.6; position: relative; width: 100%; margin-bottom: 16px; }
+
+/* --- BOTÃO FLUTUANTE DE LEITURA (FAB - NÓS DE IDEIA) --- */
+.btn-leitura-flutuante {
+    position: absolute;
+    bottom: -14px;
+    left: -14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: var(--trt-blue, #1a3a5c);
+    color: #ffffff;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+    z-index: 10;
+}
+
+.btn-leitura-flutuante:hover {
+    transform: scale(1.1);
+    background-color: var(--trt-blue-mid, #25527f);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+}
+
+.btn-leitura-flutuante:active {
+    transform: scale(0.95);
+}
+
+.btn-leitura-flutuante svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2.5px;
+}
 
 .sub-badge { position: absolute; top: -10px; right: -10px; width: 28px; height: 28px; background-color: #1a1a1a; color: #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; z-index: 3; box-shadow: var(--shadow-sm); cursor: pointer; transition: transform 0.15s ease, background-color 0.2s, box-shadow 0.2s; }
 .sub-badge:hover { transform: scale(1.15); background-color: #333; box-shadow: var(--shadow-md); }
@@ -209,8 +302,12 @@
 .sub-text-content.expanded::-webkit-scrollbar-track { background: transparent; }
 .sub-text-content.expanded::-webkit-scrollbar-thumb { background: #d0cabc; border-radius: 4px; }
 
-.btn-expand-text { background: none; border: none; color: var(--trt-blue-mid); font-size: 0.75rem; font-weight: 700; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; }
-.btn-expand-text:hover { background: rgba(37, 82, 127, 0.08); }
+/* Tipografia do conteúdo dentro do Modo Leitura */
+#reading-mode-content b, #reading-mode-content strong {
+    color: var(--trt-blue);
+    font-weight: 800;
+}
+#reading-mode-content p { margin-bottom: 1em; }
 
 .sub-input-panel { width: 90%; margin: 12px auto 0 auto; background: #fafafa; border: 1px dashed #555; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
 .sub-input-actions { display: flex; gap: 8px; justify-content: flex-end; }
@@ -236,6 +333,8 @@
    5. FASES METODOLÓGICAS E DASHBOARD
    ================================================ */
 :root {
+    --z-reading-backdrop: 4030;
+    --z-reading-modal: 4031;
     --fase-1-color: #2196F3; --fase-2-color: #4CAF50; --fase-3-color: #9C27B0; --fase-4-color: #FF9800;
     --fase-1-bg: #E4F3FD;    --fase-2-bg: #EBF6EB;    --fase-3-bg: #F4E7F6;    --fase-4-bg: #FFF4E5;  
 }
@@ -300,9 +399,9 @@
 .acervo-node-preview svg { width: 16px; height: 16px; flex-shrink: 0; }
 .acervo-node-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #555; font-style: italic; }
 
-#modal-acervo-inserir, #modal-editar-modelo-acervo { width: 80vw; max-width: 900px; }
-#acervo-list-view { display: flex; flex-direction: column; }
-#lista-acervo-geral { max-height: 40vh; flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+/* Dimensionamento e display destes seletores foram centralizados em
+   ai_juris-reader-tools.css para eliminar conflito de cascata entre arquivos
+   (ambos com mesma especificidade — o último carregado sempre vencia). */
 #acervo-items-wrapper .acervo-item { content-visibility: auto; }
 .acervo-item-header { display: flex; justify-content: space-between; align-items: flex-start; }
 .acervo-action-btn { background: transparent; border: none; color: #999; cursor: pointer; padding: 6px; border-radius: 4px; display: flex; align-items: center; transition: all 0.2s ease; }
@@ -480,18 +579,7 @@ body[data-context="ed"] .topics-content-area {
 /* ================================================
    CRONÔMETRO DE EFICIÊNCIA (TIME TRACKER)
    ================================================ */
-#efficiency-tracker-container {
-    position: sticky;
-    top: 18px;
-    z-index: 1000;
-    height: 0;         /* Impede impacto no layout dos cards abaixo */
-    overflow: visible; /* Permite que a pílula apareça mesmo com height 0 */
-    display: flex;
-    justify-content: flex-end;
-    align-items: flex-start; /* Impede esmagamento via Flexbox */
-    margin-right: 24px;
-    pointer-events: none; /* Deixa cliques atravessarem o container fantasma */
-}
+/* #efficiency-tracker-container removido daqui, layout agora é ditado pela .header-tools-area */
 
 #efficiency-tracker-pill {
     position: relative;
@@ -846,3 +934,201 @@ body[data-context="ed"] .topics-content-area {
     height: 100%;
     overflow-y: auto;
 }
+
+/* ================================================
+   VISÃO ESTRUTURADA (OUTLINE MODE) - REFINADO v3.1.0
+   ================================================ */
+.outline-view-popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+    z-index: var(--z-outline-modal);
+    
+    width: 92vw;
+    max-width: 1300px;
+    height: 88vh;
+    max-height: 88vh;
+    
+    display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* Evita que as linhas de texto fiquem longas demais no painel largo */
+#outline-view-content {
+    padding: 32px 10%;
+}
+
+.outline-section-block {
+    background: #ffffff; border: 1px solid var(--border-color);
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03); position: relative;
+    transition: border-color 0.2s ease;
+}
+
+.outline-section-block:hover { border-color: #cbd5e1; }
+
+.outline-h2-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 12px;
+}
+
+.outline-h2-title {
+    font-size: 1.05rem; font-weight: 700; color: var(--trt-blue);
+    display: flex; align-items: center; gap: 8px;
+}
+
+.btn-copy-section {
+    background: #f8fafc; border: 1px solid var(--border-color); color: #64748b;
+    border-radius: 4px; padding: 4px 10px; font-size: 0.72rem; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+    transition: all 0.15s ease;
+}
+
+.btn-copy-section:hover { background: #e2e8f0; color: var(--trt-blue); }
+
+.outline-intent-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 12px; font-size: 0.68rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px; vertical-align: middle;
+}
+
+.outline-intent-chip.intent-comando { background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+.outline-intent-chip.intent-texto { background-color: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
+.outline-intent-chip.intent-premissa { background-color: #f3e5f5; color: #7b1fa2; border: 1px solid #e1bee7; }
+.outline-intent-chip.intent-fundamentacao { background-color: #e0f2f1; color: #00695c; border: 1px solid #b2dfdb; }
+.outline-intent-chip.intent-refutacao { background-color: #efebe9; color: #8B4513; border: 1px solid #d7ccc8; }
+.outline-intent-chip.intent-preliminar { background-color: #efebe9; color: #5d4037; border: 1px solid #d7ccc8; }
+.outline-intent-chip.intent-veredito { background-color: #fff3e0; color: #e65100; border: 1px solid #ffe082; }
+
+.outline-title { font-size: 1.3rem; color: var(--trt-blue); font-weight: 800; }
+
+.outline-card {
+    background: #f8fafc; border-left: 4px solid var(--trt-blue);
+    padding: 12px 16px; margin-top: 10px; margin-bottom: 10px;
+    border-radius: 0 8px 8px 0; border: 1px solid #e2e8f0; border-left: 4px solid var(--trt-blue);
+}
+
+.outline-card.correlacionado {
+    margin-left: 24px; border-left: 4px solid #90caf9; background: #f1f5f9;
+}
+
+.outline-sub-item {
+    margin-left: 28px; padding: 8px 12px; border-left: 2px dashed #cbd5e1;
+    margin-bottom: 6px; font-size: 0.92rem; line-height: 1.6;
+    background: #ffffff; border-radius: 0 6px 6px 0;
+}
+
+.outline-img-preview { max-width: 100%; max-height: 250px; border-radius: 6px; border: 1px solid var(--border-color); margin-top: 8px; }
+.outline-audio-box { background: #fff8e1; border: 1px solid #ffe082; padding: 10px; border-radius: 6px; margin-top: 8px; font-size: 0.88rem; }
+.outline-content-text p { margin-bottom: 0.5em; }
+.outline-content-text b, .outline-content-text strong { color: var(--trt-blue); }
+
+/* ================================================
+   EMPILHAMENTO DE NÓS DE IDEIAS (PILHAS AI)
+   ================================================ */
+.sub-annotation-stack {
+    will-change: transform;
+    cursor: default;
+    background-color: #ffffff;
+    position: relative;
+}
+
+/* Efeito de Volume com Pseudo-elementos */
+.sub-annotation-stack::before,
+.sub-annotation-stack::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: inherit;
+    border: 1px solid #cbd5e1;
+    background-color: #f8fafc;
+    z-index: -1;
+}
+.sub-annotation-stack::before { transform: translateY(4px) translateX(4px); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.sub-annotation-stack::after { transform: translateY(8px) translateX(8px); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+
+/* ==========================================
+   ESTILOS: TEMA AGRAVO (VERDE LIMÃO)
+   ========================================== */
+.sub-annotation-stack.tema-agravo {
+    border-color: #84cc16 !important;
+    padding-bottom: 36px; /* Espaço reservado para o botão de leitura inferior */
+}
+
+/* Badge Romano Verde Limão */
+.sub-annotation-stack.tema-agravo .stack-roman-badge {
+    position: absolute; top: -10px; left: -10px; width: 28px; height: 28px;
+    background-color: #84cc16; color: #ffffff; border: 1px solid #65a30d;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 800; box-shadow: var(--shadow-sm); cursor: pointer; z-index: 5;
+    transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s;
+}
+.sub-annotation-stack.tema-agravo .stack-roman-badge:hover {
+    background-color: #ef4444; border-color: #ef4444; transform: scale(1.15);
+}
+
+/* Áreas de Texto Editáveis (Título e Descrição) */
+.pilha-editavel {
+    border-radius: 4px; transition: background-color 0.2s, padding 0.2s; cursor: pointer;
+    padding: 2px 4px; margin-left: -4px; font-weight: 600; color: #65a30d; margin-bottom: 8px; font-size: 0.85rem;
+}
+.pilha-editavel:hover { background-color: rgba(132, 204, 22, 0.15); }
+
+/* Descrição (com suporte a Scrollbar e Markdown) */
+.pilha-editavel-desc {
+    max-height: 120px; overflow-y: auto; font-weight: 400; color: #666;
+    line-height: 1.5; font-size: 0.8rem; margin-bottom: 0;
+}
+
+/* Suporte às tags inline geradas pelo renderizarMarkdownSeguro - TEMA AGRAVO */
+.pilha-editavel-desc b,
+.pilha-editavel-desc strong {
+    font-weight: 700;
+    color: #65a30d; /* Usando o verde escuro do Agravo para destacar negritos */
+}
+
+.pilha-editavel-desc i,
+.pilha-editavel-desc em {
+    font-style: italic;
+}
+
+.pilha-editavel-desc u {
+    text-decoration: underline;
+}
+
+.pilha-editavel-desc .txt-largo-1 {
+    font-size: 1.15em;
+}
+
+.pilha-editavel-desc .txt-largo-2 {
+    font-size: 1.3em;
+}
+
+.pilha-editavel-desc::-webkit-scrollbar { width: 4px; }
+.pilha-editavel-desc::-webkit-scrollbar-track { background: transparent; }
+.pilha-editavel-desc::-webkit-scrollbar-thumb { background: #84cc16; border-radius: 4px; }
+
+#input-pilha-descricao::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+/* Botão Modo Leitura Minimalista (Canto Inferior Esquerdo) - Tema Agravo */
+.sub-annotation-stack.tema-agravo .btn-leitura-pilha {
+    background-color: #84cc16; /* Verde limão base */
+    color: #ffffff;
+    border: 1px solid #65a30d;
+}
+.sub-annotation-stack.tema-agravo .btn-leitura-pilha:hover {
+    background-color: #65a30d; /* Verde mais escuro no hover */
+    transform: scale(1.1);
+}
+.sub-annotation-stack.tema-agravo .btn-leitura-pilha:active {
+    transform: scale(0.95);
+}
+
+/* Oculta o botão antigo e intrusivo (legado) */
+.sub-annotation-stack .stack-read-btn { display: none !important; }
