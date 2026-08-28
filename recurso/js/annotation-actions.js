@@ -1,6 +1,7 @@
 /* ================================================
    annotation-actions.js
    Gerenciamento de Menus, Formatação Segura (Markdown) e Ações
+   Versão: 2.1 (Refatoração: Single Source of Truth para Teses)
    ================================================ */
 
 let _menuAnotacaoCtx = null;
@@ -865,69 +866,64 @@ function confirmarSubAnotacao(topicoId, anotacaoIndex, cIdx = null) {
    ================================================ */
 let _ideiaContextoTese = null;
 
-const MAPA_TESE_ICONES = {
-    'neutro': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle></svg>', 
-        color: '#f57f17', 
-        bg: '#fff9c4', 
-        border: '#ffe082', 
-        title: 'Tese Mista / Não especificada', 
-        label: 'Tese Neutra' 
-    },
-    'autora': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px; transform: scaleX(-1);" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>', 
-        color: '#2e7d32', 
-        bg: '#e8f5e9', 
-        border: '#a5d6a7', 
-        title: 'Recurso da Parte Autora', 
-        label: 'Recurso Autora' 
-    },
-    're': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>', 
-        color: '#c62828', 
-        bg: '#ffebee', 
-        border: '#ef9a9a', 
-        title: 'Recurso da Parte Ré', 
-        label: 'Recurso Ré' 
-    },
-    'juizo': { 
-        icon: '<svg viewBox="0 0 24 24" style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13 6.5 20.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 5.5-5.5a2.12 2.12 0 0 0 0-3l-1.5-1.5a2.12 2.12 0 0 0-3 0L11.5 11.5"></path><path d="M15 14l-4-4"></path><path d="M8 7l4 4"></path></svg>', 
-        color: '#0d47a1', 
-        bg: '#e3f2fd', 
-        border: '#90caf9', 
-        title: 'Diretriz / Fundamento da Sentença', 
-        label: 'Juízo / Sentença' 
-    }
-};
-
-window.ciclarClassificacaoTese = function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const btn = document.getElementById('btn-classificacao-tese');
-    const estados = ['neutro', 'autora', 're', 'juizo'];
-    let atual = estados.indexOf(btn.dataset.classificacao);
-    let prox = (atual + 1) % estados.length;
-    _aplicarVisualBotaoTese(estados[prox]);
-};
-
 function _aplicarVisualBotaoTese(chave) {
     const btn = document.getElementById('btn-classificacao-tese');
     const iconSpan = document.getElementById('icone-classificacao-tese');
     const textSpan = document.getElementById('texto-classificacao-tese');
     
-    if (!btn) return;
-
-    const config = MAPA_TESE_ICONES[chave] || MAPA_TESE_ICONES['neutro'];
+    if (!btn || !window.TopicsManager || !TopicsManager.MAPA_TESE_ICONES) {
+        console.warn('[Tese] TopicsManager.MAPA_TESE_ICONES não disponível.');
+        return;
+    }
     
+    const config = TopicsManager.MAPA_TESE_ICONES[chave] || TopicsManager.MAPA_TESE_ICONES['neutro'];
+    
+    // Atualiza estado
     btn.dataset.classificacao = chave;
     btn.title = config.title;
-    btn.style.backgroundColor = config.bg;
-    btn.style.borderColor = config.border;
-    btn.style.color = config.color;
     
-    if (iconSpan) iconSpan.innerHTML = config.icon;
-    if (textSpan) textSpan.textContent = config.label;
+    // Atualiza visual via classes CSS (não inline styles)
+    if (iconSpan) {
+        iconSpan.className = `tese-icon-circle ${config.classeCss}`;
+        iconSpan.innerHTML = `<svg><use href="${config.spriteId}"></use></svg>`;
+    }
+    
+    // Atualiza label e cor do texto
+    if (textSpan) {
+        textSpan.textContent = config.label;
+        textSpan.style.color = config.textColor;
+    }
 }
+
+window.ciclarClassificacaoTese = function(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    
+    const btn = document.getElementById('btn-classificacao-tese');
+    if (!btn || !window.TopicsManager || !TopicsManager.MAPA_TESE_ICONES) {
+        console.warn('[Tese] Não foi possível ciclar: TopicsManager não disponível.');
+        return;
+    }
+    
+    const ordem = ['neutro', 'autora', 're', 'juizo'];
+    const classeAtual = btn.dataset.classificacao || 'neutro';
+    const proxIndex = (ordem.indexOf(classeAtual) + 1) % ordem.length;
+    const novaClasse = ordem[proxIndex];
+    
+    // Aplica o novo estado visual
+    _aplicarVisualBotaoTese(novaClasse);
+    
+    // Microinteração: "Pulinho" visual para indicar o clique
+    const iconSpan = document.getElementById('icone-classificacao-tese');
+    if (iconSpan) {
+        iconSpan.style.transform = 'scale(0.8)';
+        setTimeout(() => {
+            iconSpan.style.transform = 'scale(1)';
+        }, 100);
+    }
+};
 
 function abrirModalTese(topicoId, index) {
     _ideiaContextoTese = { topicoId, index };

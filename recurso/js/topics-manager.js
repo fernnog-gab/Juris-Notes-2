@@ -1,5 +1,5 @@
 /* ================================================
-   topics-manager.js  —  v2.0
+   topics-manager.js  —  v2.1
    Gerenciador do Fichário de Tópicos e Anotações
    ================================================ */
 window.TopicsManager = (function () {
@@ -335,6 +335,38 @@ window.TopicsManager = (function () {
     }
 
     let activeTabId = null;
+
+    // Dicionário Global de Identidade Visual das Teses (Fonte Única da Verdade)
+    const MAPA_TESE_ICONES = {
+        'neutro': { 
+            classeCss: 'tese-neutro', 
+            spriteId: '#icon-tese-neutro', 
+            label: 'Tese Neutra', 
+            textColor: '#64748b',
+            title: 'Tese Mista / Não especificada'
+        },
+        'autora': { 
+            classeCss: 'tese-autora', 
+            spriteId: '#icon-tese-autora', 
+            label: 'Recurso Autora', 
+            textColor: '#2e7d32',
+            title: 'Recurso da Parte Autora'
+        },
+        're': { 
+            classeCss: 'tese-re', 
+            spriteId: '#icon-tese-re', 
+            label: 'Recurso Ré', 
+            textColor: '#c62828',
+            title: 'Recurso da Parte Ré'
+        },
+        'juizo': { 
+            classeCss: 'tese-juizo', 
+            spriteId: '#icon-tese-juizo', 
+            label: 'Diretriz do Juízo', 
+            textColor: '#0d47a1',
+            title: 'Diretriz / Fundamento da Sentença'
+        }
+    };
 
     /**
      * Retorna uma cor da paleta com suporte a módulo (infinitos tópicos).
@@ -880,15 +912,14 @@ window.TopicsManager = (function () {
         const cardRef = topico.anotacoes.find(a => a.tese === teseAtual);
         const teseClassificacao = (cardRef && cardRef.teseClassificacao) ? cardRef.teseClassificacao : 'neutro';
 
-        let iconSvgTese = '';
-        if (teseClassificacao !== 'neutro') {
-            const configMap = {
-                'autora': '<svg viewBox="0 0 24 24" fill="none" stroke="#388e3c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; flex-shrink: 0;"><path d="M21 3v5l-9 9-5-5 9-9h5z"></path><path d="M9 13l-6 6"></path><path d="M3 21l3-3"></path></svg>',
-                're': '<svg viewBox="0 0 24 24" fill="none" stroke="#d32f2f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; flex-shrink: 0;"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path><path d="M13 19l6-6"></path><path d="M16 16l4 4"></path><path d="M19 21l2-2"></path></svg>',
-                'juizo': '<svg viewBox="0 0 24 24" fill="none" stroke="#0f253d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; margin-right:6px; flex-shrink: 0;"><path d="M14 13 6.5 20.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 5.5-5.5a2.12 2.12 0 0 0 0-3l-1.5-1.5a2.12 2.12 0 0 0-3 0L11.5 11.5"></path><path d="M15 14l-4-4"></path><path d="M8 7l4 4"></path></svg>'
-            };
-            iconSvgTese = configMap[teseClassificacao] || '';
-        }
+        // Consome o dicionário centralizado para identidade visual
+        const configTese = MAPA_TESE_ICONES[teseClassificacao] || MAPA_TESE_ICONES['neutro'];
+        
+        // Constrói o HTML usando a classe CSS e o Sprite SVG
+        const iconSvgTese = `
+            <span class="tese-icon-circle ${configTese.classeCss}" style="margin-right: 6px; transform: scale(0.9);">
+                <svg><use href="${configTese.spriteId}"></use></svg>
+            </span>`;
 
         const gruposProcessadosNesteCard = new Set();
         const subCardsHTMLArray = [];
@@ -941,7 +972,7 @@ window.TopicsManager = (function () {
                 </div>
                 <div class="annotation-card" style="border-left: 4px solid ${corTema}; background-color: #ffffff; background-image: linear-gradient(${rgbaTeseFundo}, ${rgbaTeseFundo});">
                     <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
-                        <div class="hierarquia-titulo" style="color: ${corTituloTese}; font-weight: bold; display: flex; align-items: center;">${iconSvgTese} Tese: ${escaparHTML(teseAtual)}</div>
+                        <div class="hierarquia-titulo" style="color: ${corTituloTese}; font-weight: bold; display: flex; align-items: center; gap: 8px;">${iconSvgTese} Tese: ${escaparHTML(teseAtual)}</div>
                         <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
                             <button title="Adicionar Diretriz à Tese" onclick="adicionarDiretrizEstrutural('tese', '${tabId}', '${escaparHTML(teseAtual).replace(/'/g, "\\'")}', event)">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -1873,6 +1904,7 @@ window.TopicsManager = (function () {
 
     // API pública do módulo
     return {
+        MAPA_TESE_ICONES,
         obterCor,
         abrirModalPilha,
         fecharModalPilha,
