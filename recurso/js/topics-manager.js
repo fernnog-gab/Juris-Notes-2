@@ -442,10 +442,32 @@ window.TopicsManager = (function () {
             tagVisual = `<span class="polo-tag doc-tag">${escaparHTML(dados.role)}</span> <span class="polo-tag ${classePolo}">${escaparHTML(dados.poloTag)}</span>`;
         }
 
+        const inicioNum = Number(dados.inicioNum);
+        const fimNum = Number(dados.fimNum);
+        const trechoValido = Number.isFinite(inicioNum) && Number.isFinite(fimNum) && fimNum > inicioNum;
+
+        if (!trechoValido) {
+            return {
+                htmlConteudo: `<p class="card-texto" style="color:#c62828;">[Erro: intervalo do áudio inválido]</p>`,
+                htmlComentario: ''
+            };
+        }
+
+        const tituloMini = `Oitiva: ${dados.orador}`;
+        // Escapamento duplo para sobreviver ao parser HTML e ao dataset do JS
+        const tituloMiniAttr = escaparHTML(tituloMini).replace(/'/g, '&apos;');
+
         htmlConteudo = `
             <div class="card-audio">
-                <div class="audio-icon-box clickable-audio" title="Ouvir este trecho específico" onclick="AudioManager.tocarTrecho(${dados.inicioNum}, ${dados.fimNum})">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <div class="audio-icon-box clickable-audio" 
+                     role="button" 
+                     tabindex="0" 
+                     title="Ouvir este trecho em player focado"
+                     aria-label="${tituloMiniAttr}"
+                     data-audio-inicio="${inicioNum}" 
+                     data-audio-fim="${fimNum}" 
+                     data-audio-titulo="${tituloMiniAttr}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
                 </div>
