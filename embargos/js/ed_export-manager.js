@@ -14,6 +14,23 @@ window.ExportManager = (function () {
         getActiveTabId: () => null
     };
 
+    // SINGLE SOURCE OF TRUTH — marcadores de sanitização (LGPD)
+    const MARCADOR_OFICIAL_LGPD = '\n\n[AVISO DE SISTEMA: Dados sensíveis (ex: endereços) ou estruturais (cabeçalhos) foram ocultados pela Borracha Mágica para adequação à LGPD.]\n\n';
+    const MARCADOR_RUIDOS = '\n\n[AVISO DE SISTEMA: Dados estruturais ocultados.]\n\n';
+
+    function _obterChaveStorageFiltro() {
+        const tagDom = document.getElementById('tag-numero-processo');
+        const numProcesso = tagDom && tagDom.textContent.trim() ? tagDom.textContent.trim() : 'padrao';
+        return `juris_filtros_${numProcesso}`;
+    }
+
+    function _carregarRegrasFiltro() {
+        try {
+            const salvo = sessionStorage.getItem(_obterChaveStorageFiltro());
+            return salvo ? JSON.parse(salvo) : {};
+        } catch { return {}; }
+    }
+
     // CONFIGURAÇÃO CENTRALIZADA DE CONTEXTOS PROCESSUAIS (Arquitetura Base-2)
     const ESQUEMAS_CONTEXTO = {
         'RO': {
@@ -132,8 +149,19 @@ window.ExportManager = (function () {
                 if (diretrizes && diretrizes.length > 0) {
                     const diretrizesValidas = diretrizes.filter(dir => dir.intencao !== 'nota');
                     if (diretrizesValidas.length > 0) {
+                        
+                        // [NOVO] MAPEAMENTO ESTRUTURAL PARA A IA: Sincronia perfeita com a UI
+                        const tesesVinculadas = topico.anotacoes
+                            .filter(an => (an.vicio || topico.vicio) === nomeVicio && an.tese && an.tese.trim() !== '')
+                            .map(an => an.tese.trim());
+                        
+                        const tesesUnicas = [...new Set(tesesVinculadas)];
+                        const stringTeses = tesesUnicas.length > 0 ? tesesUnicas.join(' | ') : 'Aguardando definição do usuário na Matriz.';
+
                         bufferVicios += `<vicio_alvo>\n`;
                         bufferVicios += `[NOME DO VÍCIO]: ${_escapeXmlAttr(nomeVicio)}\n`;
+                        bufferVicios += `[TESES RECURSAIS ENVOLVIDAS]: ${_escapeXmlAttr(stringTeses)}\n`;
+                        
                         diretrizesValidas.forEach(dir => {
                              bufferVicios += `[INSTRUÇÃO DE ANÁLISE]: ${_safeMD(dir.texto, '\n')}\n`;
                         });
@@ -153,10 +181,25 @@ window.ExportManager = (function () {
         if (!topico.anotacoes || topico.anotacoes.length === 0) {
             md += `*Nenhum elemento processual foi anexado para auditoria.*\n`;
         } else {
+            // [NOVO CÓDIGO: Máquina de estado para controle de tags XML]
+            let ultimaTeseExportada = null;
+
             // 3. ITERAÇÃO PROFUNDA COM ENVELOPAMENTO XML
-                topico.anotacoes.forEach((an, idx) => {
-                    const numIdeia = idx + 1;
-                    const refCitacao = _formatarCitacaoOficial(an.pjeId, an.pagina);
+            topico.anotacoes.forEach((an, idx) => {
+                const teseAtual = an.tese && an.tese.trim() !== '' ? an.tese.trim() : 'Argumentação Geral';
+                const vicioAtual = an.vicio || topico.vicio || 'Nao Especificado';
+
+                // Lógica Cirúrgica: Fechar grupo anterior e abrir novo grupo se houver quebra
+                if (teseAtual !== ultimaTeseExportada) {
+                    if (ultimaTeseExportada !== null) {
+                        md += `</grupo_tese>\n\n`; // Fecha o cluster anterior
+                    }
+                    md += `<grupo_tese vicio_investigado="${_escapeXmlAttr(vicioAtual)}" delimitacao_faticas_da_tese="${_escapeXmlAttr(teseAtual)}">\n`;
+                    ultimaTeseExportada = teseAtual;
+                }
+
+                const numIdeia = idx + 1;
+                const refCitacao = _formatarCitacaoOficial(an.pjeId, an.pagina);
                     
                     // Avaliação OK: Utiliza o SSOT com renderHtml=false para garantir uma string limpa no payload da IA
                     const tituloVicio = window.JurisUtils.obterBadgeTeseCompleto(an.vicio || topico.vicio, an.tese, false) || 'Auditoria Geral';
@@ -263,6 +306,12 @@ window.ExportManager = (function () {
 
                 md += `</analise_de_evidencia>\n\n`;
             });
+
+            // [NOVO CÓDIGO: Trava de segurança no final do loop]
+            // Garante o fechamento da última tag de grupo aberta
+            if (ultimaTeseExportada !== null) {
+                md += `</grupo_tese>\n\n`;
+            }
         }
 
         // 4. INJEÇÃO GLOBAL (Bordas do Payload)
@@ -509,19 +558,31 @@ window.ExportManager = (function () {
                     const tagName = docTipo.toUpperCase();
                     
                     try {
+                        const pInicio = Math.min(limites.inicio.pagina, limites.fim.pagina);
+                        const pFim = Math.max(limites.inicio.pagina, limites.fim.pagina);
+                        const amostrasMap = new Map();
+
                         const textoBruto = await window.PdfEngine.extrairTextoPorRegiao(
                             limites.inicio, 
                             limites.fim,
-                            // Progress Tracking interpolado pelo orquestrador
                             (atual, totalPagsDoc) => {
                                 const docNumber = idx + 1;
                                 _deps.exibirToast(`⏳ Processando Peça ${docNumber}/${checkboxesDocsExtra.length} (Pág ${atual} de ${totalPagsDoc})...`, 'info');
+                            },
+                            (pageNum, rawText) => {
+                                if (pageNum === pInicio + 1 || pageNum === pInicio + 2 || pageNum === pFim - 1) {
+                                    amostrasMap.set(pageNum, rawText);
+                                }
                             }
                         );
                         
-                        const textoLimpo = (window.JurisUtils && window.JurisUtils.limparTextoPDF) 
+                        let textoLimpo = (window.JurisUtils && window.JurisUtils.limparTextoPDF) 
                             ? window.JurisUtils.limparTextoPDF(textoBruto) 
                             : textoBruto;
+
+                        // SANITIZAÇÃO DELEGADA — fonte única, compartilhada com o Gerador de Contexto IA
+                        textoLimpo = aplicarFiltrosAvancados(textoLimpo, docTipo, amostrasMap, pInicio, pFim);
+
                         conteudoFinal += `<${tagName}>\n${textoLimpo}\n</${tagName}>\n\n`;
                     } catch (extraError) {
                         if (extraError.message && extraError.message.includes("CONCURRENCY_VIOLATION")) {
@@ -579,6 +640,39 @@ window.ExportManager = (function () {
             // LIBERA A TRAVA EM QUALQUER CENÁRIO
             _isExporting = false;
         }
+    }
+
+    /**
+     * Aplica as duas camadas de sanitização (LGPD) sobre um texto extraído do PDF:
+     *   1. Automática — remove ruído estrutural repetido entre páginas (cabeçalhos/rodapés).
+     *   2. Manual — aplica a regra fuzzy cadastrada pelo usuário na Borracha Mágica.
+     */
+    function aplicarFiltrosAvancados(textoLimpo, docTipo, amostrasMap, pInicio, pFim) {
+        let textoProcessado = textoLimpo;
+
+        // 1. CAMADA AUTOMÁTICA (Ruído Estrutural)
+        if (window.JurisUtils && window.JurisUtils.descobrirRuidosEstruturais && amostrasMap && amostrasMap.size > 0) {
+            let textoA = amostrasMap.get(pInicio + 1) || "";
+            let textoB = amostrasMap.get(pInicio + 2) || amostrasMap.get(pFim - 1) || "";
+
+            if (textoA && textoB) {
+                textoA = window.JurisUtils.limparTextoPDF(textoA);
+                textoB = window.JurisUtils.limparTextoPDF(textoB);
+                const esqueletosAutonomos = window.JurisUtils.descobrirRuidosEstruturais(textoA, textoB);
+
+                esqueletosAutonomos.forEach(esqueleto => {
+                    textoProcessado = window.JurisUtils.removerTrechoFuzzy(textoProcessado, esqueleto, MARCADOR_RUIDOS, true);
+                });
+            }
+        }
+
+        // 2. CAMADA MANUAL (Regras da Borracha Mágica — LGPD)
+        const regras = _carregarRegrasFiltro();
+        if (regras[docTipo] && window.JurisUtils && window.JurisUtils.removerTrechoFuzzy) {
+            textoProcessado = window.JurisUtils.removerTrechoFuzzy(textoProcessado, regras[docTipo], MARCADOR_OFICIAL_LGPD, false);
+        }
+
+        return textoProcessado;
     }
 
     // ========================================================================
@@ -675,7 +769,8 @@ window.ExportManager = (function () {
         },
         abrirPainelExportacao, 
         fecharPainelExportacao, 
-        gerarExportacaoPersonalizada
+        gerarExportacaoPersonalizada,
+        aplicarFiltrosAvancados
     };
 
 })();

@@ -3,6 +3,23 @@
    ORQUESTRADOR CENTRAL E INFRAESTRUTURA DA APLICAÇÃO
    ================================================ */
 
+// Utilitário para evitar Layout Thrashing e Flickering
+window.RenderCycle = {
+    awaitNextFrame: () => new Promise(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }),
+    bloquearScrollBody: (bloquear) => {
+        if (bloquear) {
+            const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+            document.body.style.overflow = 'hidden';
+            document.body.style.paddingRight = `${scrollBarWidth}px`;
+        } else {
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
+    }
+};
+
 /* ================================================
    MÓDULO DA SPLASH SCREEN (GERENCIADOR DE ESTADO E EVENT LOOP)
    ================================================ */
@@ -72,20 +89,104 @@ window.JurisUtils = window.JurisUtils || {};
 window.JurisUtils.limparTextoPDF = function(texto) {
     if (!texto || typeof texto !== 'string') return '';
     return texto
+        // Expressão Regular Segura: Limita a captura à própria linha do rodapé, englobando as variações comuns do PJe
+        .replace(/(?:Documento\s+assinado\s+eletronicamente\s+por|Assinado\s+(?:digitalmente|eletronicamente)\s+por|Signatário(?:\(a\))?[:\s])[^\n]*(?=\n|$)/gi, ' ')
         .replace(/([\p{L}])-\r?\n\s*([\p{L}])/gu, '$1$2')
         .replace(/([^\n\r])\r?\n([^\n\r])/g, '$1 $2')
         .replace(/ {2,}/g, ' ')
         .trim();
 };
 
+const _encontrarMaiorSubstringComum = (s1, s2) => {
+    if (!s1 || !s2) return "";
+    let maxLen = 0, endIdx = 0;
+    const prev = new Uint16Array(s2.length + 1);
+    const curr = new Uint16Array(s2.length + 1);
+    for (let i = 1; i <= s1.length; i++) {
+        for (let j = 1; j <= s2.length; j++) {
+            if (s1[i - 1] === s2[j - 1]) {
+                curr[j] = prev[j - 1] + 1;
+                if (curr[j] > maxLen) { maxLen = curr[j]; endIdx = i; }
+            } else { curr[j] = 0; }
+        }
+        prev.set(curr);
+    }
+    return s1.substring(endIdx - maxLen, endIdx);
+};
+
+window.JurisUtils.removerTrechoFuzzy = function(textoBruto, amostraTarget, marcadorLGPD, isAgulhaEsqueleto = false) {
+    if (!textoBruto || !amostraTarget) return textoBruto;
+    const fallbackMarcador = '\n\n[AVISO DE SISTEMA: Dados estruturais ou sensíveis ocultados.]\n\n';
+    const tagFinal = marcadorLGPD !== undefined ? marcadorLGPD : fallbackMarcador;
+
+    let esqueletoAgulha = amostraTarget;
+    
+    if (!isAgulhaEsqueleto) {
+        const agulhaMatches = [...amostraTarget.toLowerCase().matchAll(/[\p{L}]/gu)];
+        if (agulhaMatches.length < 15) return textoBruto; 
+        esqueletoAgulha = agulhaMatches.map(m => m[0]).join('');
+    }
+
+    const palheiroMatches = [...textoBruto.toLowerCase().matchAll(/[\p{L}]/gu)];
+    if (palheiroMatches.length === 0) return textoBruto;
+    const esqueletoPalheiro = palheiroMatches.map(m => m[0]).join('');
+
+    const rangesParaSubstituir = [];
+    let startIndex = 0;
+
+    while (true) {
+        const pos = esqueletoPalheiro.indexOf(esqueletoAgulha, startIndex);
+        if (pos === -1) break;
+
+        const inicioReal = palheiroMatches[pos].index;
+        const fimRealObj = palheiroMatches[pos + esqueletoAgulha.length - 1];
+        const fimReal = fimRealObj.index + fimRealObj[0].length; 
+
+        rangesParaSubstituir.push({ start: inicioReal, end: fimReal });
+        startIndex = pos + esqueletoAgulha.length;
+    }
+
+    if (rangesParaSubstituir.length === 0) return textoBruto;
+
+    let resultadoFinal = textoBruto;
+    for (let i = rangesParaSubstituir.length - 1; i >= 0; i--) {
+        const { start, end } = rangesParaSubstituir[i];
+        resultadoFinal = resultadoFinal.substring(0, start) + tagFinal + resultadoFinal.substring(end);
+    }
+
+    return resultadoFinal;
+};
+
+window.JurisUtils.descobrirRuidosEstruturais = function(textoPagA, textoPagB) {
+    const esqA = [...textoPagA.toLowerCase().matchAll(/[\p{L}]/gu)].map(m => m[0]).join('');
+    const esqB = [...textoPagB.toLowerCase().matchAll(/[\p{L}]/gu)].map(m => m[0]).join('');
+    if (esqA.length < 50 || esqB.length < 50) return [];
+    
+    const ruidos = [];
+    const lcsTopo = _encontrarMaiorSubstringComum(esqA.substring(0, 300), esqB.substring(0, 300));
+    if (lcsTopo.length >= 15) ruidos.push(lcsTopo);
+    
+    const lcsBase = _encontrarMaiorSubstringComum(esqA.substring(Math.max(0, esqA.length - 300)), esqB.substring(Math.max(0, esqB.length - 300)));
+    if (lcsBase.length >= 15 && lcsBase !== lcsTopo) ruidos.push(lcsBase);
+    
+    return ruidos;
+};
+
 window.JurisUtils.formatarVicioED = function(vicioRaw) {
     if (!vicioRaw) return 'Vício Não Especificado';
     
-    // Dicionário de Correção Gramatical e Tipificação
+    // Dicionário Híbrido: Mapeia Legado + Novas Chaves normativas
     const dicionario = {
+        // Legados da V1
         'omissao': 'Omissão',
         'contradicao': 'Contradição',
-        'erro': 'Erro Material / Obscuridade'
+        'erro': 'Erro Material', // Fallback Legado garantido
+        
+        // Novas chaves da V2
+        'obscuridade': 'Obscuridade',
+        'manifesto_equivoco': 'Manifesto Equívoco',
+        'erro_material': 'Erro Material',
+        'pre_questionamento': 'Pré-Questionamento'
     };
     
     return dicionario[vicioRaw.toLowerCase()] || vicioRaw;
@@ -156,6 +257,22 @@ window.ShortcutManager = (function() {
         acordao: 'Acórdão Embargado' 
     };
 
+    // NOVA ARQUITETURA: Centralizador de Mutação de Estado e Persistência
+    async function _commitShortcut(type, pageNum) {
+        state[type] = pageNum;
+        updateUI();
+        
+        // Mensagem semântica dependendo se é inclusão ou exclusão
+        if (pageNum === null) {
+            exibirToast('Atalho removido.', 'sucesso');
+        } else {
+            exibirToast(`${rotulos[type]} atualizado para fl. ${pageNum}!`, 'sucesso');
+        }
+
+        // Desacoplamento seguro (Call by string check)
+        if (typeof salvarBackupAutomatico === 'function') await salvarBackupAutomatico();
+    }
+
     function updateUI() {
         Object.keys(state).forEach(type => {
             const btn = document.getElementById(getFabId(type));
@@ -164,20 +281,40 @@ window.ShortcutManager = (function() {
             // Limpa classes antigas do botão
             btn.className = 'fab-btn fab-shortcut';
             
+            // Single Source of Truth para Tooltips (UX dinâmica)
             if (state[type] === null) {
                 btn.classList.add('is-empty');
-                btn.title = `Marcar página: ${rotulos[type]}`;
+                btn.title = `Marcar página: ${rotulos[type]}\n[Ctrl + Clique] p/ capturar a página atual`;
             } else {
                 btn.classList.add(colors[type]);
-                btn.title = `${rotulos[type]} (Pág. ${state[type]})\n[Shift + Clique] para editar`;
+                btn.title = `${rotulos[type]} (Pág. ${state[type]})\n[Shift + Clique] p/ editar\n[Ctrl + Clique] p/ capturar a página atual`;
             }
         });
     }
 
-    function handleClick(type, event) {
+    async function handleClick(type, event) {
         if (!window.PdfEngine || !PdfEngine.getPdfDoc()) {
             exibirToast('Carregue um documento primeiro.', 'aviso'); return;
         }
+
+        // FLUXO DE CAPTURA RÁPIDA (Early Return com Isolamento de Evento)
+        // Utilizando apenas Ctrl estrito (evitando falsos positivos com AltGr/Shift)
+        if (event.ctrlKey && !event.shiftKey && !event.altKey) {
+            event.preventDefault();
+            event.stopPropagation(); // Impede o "Event Bubbling" que fecha modais
+            
+            const currentPage = PdfEngine.getCurrentPage();
+            
+            // Validação defensiva rápida
+            if (currentPage > 0) {
+                await _commitShortcut(type, currentPage);
+            } else {
+                exibirToast('Não foi possível identificar a página atual.', 'erro');
+            }
+            return; 
+        }
+
+        // FLUXO ORIGINAL (Modal de Edição ou Navegação)
         if (state[type] === null || event.shiftKey) {
             abrirModal(type);
         } else {
@@ -207,20 +344,17 @@ window.ShortcutManager = (function() {
         const val = document.getElementById('shortcut-page-input').value.trim();
         const parsed = parseInt(val, 10);
         
+        // Delegação de mutação para o orquestrador
         if (val === '') {
-            state[currentEditingType] = null;
-            exibirToast('Atalho removido.', 'sucesso');
+            await _commitShortcut(currentEditingType, null);
         } else if (!isNaN(parsed) && parsed > 0) {
-            state[currentEditingType] = parsed;
-            exibirToast('Atalho salvo com sucesso!', 'sucesso');
+            await _commitShortcut(currentEditingType, parsed);
         } else {
             exibirToast('Número de página inválido.', 'erro');
             return;
         }
         
         fecharModal();
-        updateUI();
-        if (typeof salvarBackupAutomatico === 'function') await salvarBackupAutomatico();
     }
 
     function getFabId(type) {
@@ -514,7 +648,7 @@ function atualizarStatusBackup(texto, ativa = false) {
 }
 
 function habilitarFerramentasDeTrabalho() {
-    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-balanca-justica', 'btn-ferramenta-extrator']
+    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-balanca-justica', 'btn-ferramenta-extrator', 'btn-visao-estruturada', 'btn-visao-minuta']
         .forEach(id => {
             const btn = document.getElementById(id);
             if (btn) btn.disabled = false;
@@ -550,6 +684,7 @@ function encerrarSessao() {
     if (typeof fecharPopupClassificacao === 'function') fecharPopupClassificacao();
     if (window.AudioManager) window.AudioManager.encerrar();
     if (window.TimeTrackerManager) window.TimeTrackerManager.parar();
+    if (window.TaskManager) window.TaskManager.setTarefasState([]);
 
     topicos      = [];
     modoRetomada = false;
@@ -580,7 +715,7 @@ function encerrarSessao() {
     }
     window._nomeArquivoSugerido = null; // Reseta nome do backup
 
-    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-ferramenta-extrator']
+    ['btn-ferramenta-recorte', 'btn-ferramenta-texto', 'btn-novo-topico', 'btn-encerrar-sessao', 'btn-ferramenta-audio', 'btn-ferramenta-extrator', 'btn-visao-estruturada', 'btn-visao-minuta']
         .forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -735,45 +870,74 @@ function verificarAcervoEmSegundoPlano(nomeTopico) {
     }, { timeout: 5000 });
 }
 
-function criarTopicoPrompt() {
-    const vicioInput = prompt('Selecione o tipo de Vício:\n1 - Omissão\n2 - Contradição\n3 - Erro Material / Obscuridade');
-    if (!vicioInput) return;
+window.criarTopicoPrompt = function() {
+    document.getElementById('input-tema-novo-topico').value = '';
+    // Reseta para o primeiro radio selecionado
+    document.querySelector('input[name="vicio_alegado_novo"][value="omissao"]').checked = true;
     
-    const mapaVicios = { '1': 'omissao', '2': 'contradicao', '3': 'erro' };
-    const vicioTipado = mapaVicios[vicioInput.trim()];
+    document.getElementById('novo-topico-backdrop').style.display = 'block';
+    document.getElementById('modal-novo-topico').style.display = 'flex';
     
-    if (!vicioTipado) {
-        exibirToast('Opção inválida. Digite 1, 2 ou 3.', 'erro');
+    setTimeout(() => {
+        document.getElementById('input-tema-novo-topico').focus();
+    }, 100);
+};
+
+window.fecharModalCriarTopico = function() {
+    document.getElementById('novo-topico-backdrop').style.display = 'none';
+    document.getElementById('modal-novo-topico').style.display = 'none';
+};
+
+window.confirmarCriacaoTopico = function() {
+    const radioVicio = document.querySelector('input[name="vicio_alegado_novo"]:checked');
+    if (!radioVicio) {
+        exibirToast('Selecione uma hipótese legal.', 'erro');
         return;
     }
 
-    const nomeEspecifico = prompt('Descreva o tema (Ex: Horas Extras, Multa):');
-    if (!nomeEspecifico || !nomeEspecifico.trim()) return;
+    const vicioTipado = radioVicio.value; // Chave estruturada limpa (ex: pre_questionamento)
+    
+    const inputTema = document.getElementById('input-tema-novo-topico');
+    const nomeEspecifico = inputTema.value.trim();
+    if (!nomeEspecifico) {
+        exibirToast('Por favor, defina o tema do embargo.', 'aviso');
+        inputTema.focus();
+        return;
+    }
 
-    const nomeCompleto = `${vicioTipado.toUpperCase()} — ${nomeEspecifico.trim()}`;
+    // Formatação elegante usando a camada de normalização
+    const vicioFormatadoVisivel = window.JurisUtils.formatarVicioED(vicioTipado);
+    const nomeCompleto = `${vicioFormatadoVisivel.toUpperCase()} — ${nomeEspecifico}`;
     
     const duplicado = topicos.some(t => t.nome.toLowerCase() === nomeCompleto.toLowerCase());
-    if (duplicado) return exibirToast(`Já existe análise para "${nomeCompleto}".`, 'aviso');
+    if (duplicado) {
+        exibirToast(`Já existe análise para "${nomeCompleto}".`, 'aviso');
+        return;
+    }
 
     const cor = TopicsManager.obterCor(topicos.length);
     
-    // SSOT: O vício agora nasce com o tópico.
+    // Injeta a variável no "Cérebro" do Tópico (SSOT)
     topicos.push({ 
         id: 'topico-' + Date.now(), 
         nome: nomeCompleto, 
-        vicio: vicioTipado, // Dado estruturado vital para o ed_topics-manager.js
+        vicio: vicioTipado, 
         cor, 
         anotacoes: [] 
     });
 
+    fecharModalCriarTopico();
     renderizarTopicos();
-    salvarBackupAutomatico();
-    trocarAba('historico');
-    exibirToast(`Análise de ${vicioTipado} iniciada.`, 'sucesso');
     
-    // Dispara a verificação de acervo de forma não bloqueante
-    verificarAcervoEmSegundoPlano(nomeCompleto);
-}
+    if (typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    
+    trocarAba('historico');
+    exibirToast(`Análise de ${vicioFormatadoVisivel} iniciada.`, 'sucesso');
+    
+    if (typeof verificarAcervoEmSegundoPlano === 'function') {
+        verificarAcervoEmSegundoPlano(nomeCompleto);
+    }
+};
 
 function renderizarTopicos() {
     TopicsManager.renderizarFichario(topicos);
@@ -786,10 +950,10 @@ function renderizarTopicos() {
     }
 }
 
-function capturarTrechoSelecionado() {
+async function capturarTrechoSelecionado() {
     const selection = window.getSelection();
-    
-    // [NOVO] Executa o Data Sanitization Pipeline antes de validar o length
+
+    // 1. Pipeline de Higienização de Texto
     let selecaoTexto = selection.toString().trim();
     selecaoTexto = window.JurisUtils.limparTextoPDF(selecaoTexto);
 
@@ -798,32 +962,82 @@ function capturarTrechoSelecionado() {
         return;
     }
 
-    const node = selection.anchorNode;
-    if (!node) return;
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+    if (!anchorNode || !focusNode) return;
 
-    const element = node.nodeType === 3 ? node.parentNode : node;
-    const pageContainer = element.closest('.pdf-page-container');
+    const anchorContainer = (anchorNode.nodeType === 3 ? anchorNode.parentNode : anchorNode).closest('.pdf-page-container');
+    const focusContainer = (focusNode.nodeType === 3 ? focusNode.parentNode : focusNode).closest('.pdf-page-container');
 
-    if (!pageContainer) {
+    if (!anchorContainer || !focusContainer) {
         exibirToast('A seleção deve estar dentro do PDF.', 'aviso');
         return;
     }
 
-    const anchorPage = parseInt(pageContainer.dataset.pageNumber, 10);
+    const anchorPageNum = parseInt(anchorContainer.dataset.pageNumber, 10);
+    const focusPageNum = parseInt(focusContainer.dataset.pageNumber, 10);
+
+    const minPage = Math.min(anchorPageNum, focusPageNum);
+    const maxPage = Math.max(anchorPageNum, focusPageNum);
+
+    // 2. DOM Read Phase
+    const cachedPages = [];
+    for (let i = minPage; i <= maxPage; i++) {
+        const pageEl = document.querySelector(`.pdf-page-container[data-page-number="${i}"]`);
+        if (pageEl) {
+            cachedPages.push({ page: i, rect: pageEl.getBoundingClientRect() });
+        }
+    }
+
+    // [NOVO] Busca o limite de rodapé por conteúdo (não percentual fixo) para cada página envolvida
+    if (window.PdfEngine && typeof window.PdfEngine.obterLimiteRodape === 'function') {
+        await Promise.all(cachedPages.map(async (p) => {
+            p.limiteRodape = await window.PdfEngine.obterLimiteRodape(p.page);
+        }));
+    }
+
     const range = selection.getRangeAt(0);
-    const rects = Array.from(range.getClientRects());
-    const containerRect = pageContainer.getBoundingClientRect();
+    const rawRects = Array.from(range.getClientRects());
+    const mappedRects = [];
 
-    _tempHighlightState.rects = rects.map(r => ({
-        top: r.top - containerRect.top,
-        left: r.left - containerRect.left,
-        width: r.width,
-        height: r.height
-    }));
-    _tempHighlightState.paginaFisica = anchorPage;
+    // 3. Compute Phase — descarta rects que caem na zona de assinatura
+    rawRects.forEach(rect => {
+        const midY = rect.top + (rect.height / 2);
+        const matchedPage = cachedPages.find(p => midY >= p.rect.top && midY <= p.rect.bottom);
 
+        if (matchedPage) {
+            const localTop = rect.top - matchedPage.rect.top;
+
+            // [NOVO] Se a linha estiver na zona de assinatura desta página específica, ignora o grifo
+            if (matchedPage.limiteRodape != null && localTop >= matchedPage.limiteRodape) {
+                return;
+            }
+
+            mappedRects.push({
+                page: matchedPage.page,
+                top: localTop,
+                left: rect.left - matchedPage.rect.left,
+                width: rect.width,
+                height: rect.height
+            });
+        }
+    });
+
+    if (mappedRects.length === 0) {
+        exibirToast('Seleção restrita à área de assinatura do documento.', 'aviso');
+        window.getSelection().removeAllRanges();
+        return;
+    }
+
+    // 4. Update de Estado
+    _tempHighlightState.rects = mappedRects;
+    _tempHighlightState.paginaFisica = anchorPageNum;
+
+    // 5. Restauração de UX
     if (typeof exibirPopupClassificacao === 'function') {
-        exibirPopupClassificacao('texto', selecaoTexto, rects[0].left, rects[0].bottom + 10, anchorPage);
+        const popupAnchorX = rawRects[rawRects.length - 1].left;
+        const popupAnchorY = rawRects[rawRects.length - 1].bottom + 10;
+        exibirPopupClassificacao('texto', selecaoTexto, popupAnchorX, popupAnchorY, anchorPageNum);
     }
 }
 
@@ -1019,14 +1233,30 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
         if (typeof fecharPopupClassificacao === 'function') fecharPopupClassificacao();
         if (typeof cancelarRecorteWizard === 'function') cancelarRecorteWizard();
+        
+        // NOVO: Delegação genérica para fechamento de modais
+        const modaisFechaveis = document.querySelectorAll('.fechavel-por-esc');
+        modaisFechaveis.forEach(modal => {
+            if (modal.style.display === 'flex' || modal.style.display === 'block') {
+                if (modal.id === 'outline-view-modal' && window.OutlineViewManager) OutlineViewManager.fechar();
+                if (modal.id === 'minuta-view-modal' && window.MinutaViewManager) MinutaViewManager.fechar();
+                if (modal.id === 'modal-tarefas' && window.TaskManager) TaskManager.fecharModal();
+            }
+        });
     }
 });
 
 document.addEventListener('click', function (e) {
     const popup = document.getElementById('classification-popup');
-    if (popup && popup.style.display === 'flex' && !popup.contains(e.target) && !e.target.closest('.icon-btn')) {
+    
+    // ARQUITETURA SSOT: Identifica se o clique nasceu dentro de um menu suspenso (portal)
+    // O(log n) na subida da árvore DOM.
+    const isClickInsidePortal = e.target.closest('.jcs-options-portal');
+    
+    if (popup && popup.style.display === 'flex' && !popup.contains(e.target) && !e.target.closest('.icon-btn') && !isClickInsidePortal) {
         if (typeof fecharPopupClassificacao === 'function') fecharPopupClassificacao();
     }
+    
     const menu = document.getElementById('annotation-context-menu');
     if (menu) menu.style.display = 'none';
 
@@ -1552,3 +1782,206 @@ window.atualizarStatusBotaoExtrator = function() {
         btn.title = 'Alfinete de Extração (Marcar Início/Fim para IA)';
     }
 };
+
+/* ================================================
+   MÓDULO GERENCIADOR DE TAREFAS NATIVO (TASK MANAGER)
+   ================================================ */
+window.TaskManager = (function() {
+    let selectorArmTimer = null;
+
+    async function abrirModal(e) {
+        if(e) e.stopPropagation();
+        const backdrop = document.getElementById('tarefas-modal-backdrop');
+        const modal = document.getElementById('modal-tarefas');
+        
+        RenderCycle.bloquearScrollBody(true);
+        backdrop.style.display = 'block';
+        modal.style.display = 'flex';
+        
+        await RenderCycle.awaitNextFrame();
+        
+        atualizarBadge();
+        const lista = document.getElementById('native-obs-list');
+        if(lista) lista.scrollTop = 0;
+    }
+
+    function fecharModal() {
+        document.getElementById('tarefas-modal-backdrop').style.display = 'none';
+        document.getElementById('modal-tarefas').style.display = 'none';
+        RenderCycle.bloquearScrollBody(false);
+        atualizarBadge();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    function adicionarTarefa() {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return;
+        const div = document.createElement('div');
+        div.className = 'native-task-item';
+        
+        div.innerHTML = `
+            <input type="checkbox" onchange="TaskManager.toggleConcluido(this)">
+            <div class="topic-circle-indicator" data-topic-id="global" title="Global" style="background-color: #ffffff; border: 2px solid #cbd5e1;" onclick="TaskManager.abrirSeletorTemas(this, event)"></div>
+            <input type="text" placeholder="Escreva sua tarefa..." oninput="this.setAttribute('value', this.value);">
+            <button onclick="this.parentElement.remove(); TaskManager.atualizarBadge();" style="border:none; background:none; cursor:pointer; color:#ef4444; margin-left: 8px;">✕</button>
+        `;
+        container.appendChild(div);
+        
+        requestAnimationFrame(() => {
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        });
+        atualizarBadge();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    function toggleConcluido(chk) {
+        const item = chk.closest('.native-task-item');
+        if(chk.checked) {
+            item.classList.add('completed');
+            chk.setAttribute('checked', 'checked');
+        } else {
+            item.classList.remove('completed');
+            chk.removeAttribute('checked');
+        }
+        atualizarBadge();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    function atualizarBadge() {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return;
+        
+        const pendentes = container.querySelectorAll('input[type="checkbox"]:not(:checked)').length;
+        const btn = document.getElementById('btn-lembretes-tarefa');
+        const badge = document.getElementById('badge-tarefas');
+        
+        if (!btn) return;
+
+        if(pendentes > 0) {
+            btn.classList.add('has-tasks');
+            if(badge) {
+                badge.style.display = 'flex';
+                badge.textContent = pendentes > 99 ? '99+' : pendentes;
+            }
+        } else {
+            btn.classList.remove('has-tasks');
+            if(badge) badge.style.display = 'none';
+        }
+    }
+
+    function abrirSeletorTemas(circleEl, event) {
+        if (event) event.stopPropagation();
+
+        document.querySelectorAll('.obs-topic-selector-menu').forEach(m => m.remove());
+
+        const menu = document.createElement('div');
+        menu.className = 'obs-topic-selector-menu jcs-options-portal';
+        menu.style.visibility = 'hidden'; 
+        menu.style.position = 'fixed';
+        menu.style.width = '200px';
+
+        const optionGlobal = document.createElement('div');
+        optionGlobal.className = 'jcs-option';
+        optionGlobal.innerHTML = `<div class="jcs-color-dot" style="background: #ffffff; border: 1px solid #ccc;"></div> Global`;
+        optionGlobal.addEventListener('click', () => applyTheme(circleEl, 'global', 'Global', '#ffffff', menu));
+        menu.appendChild(optionGlobal);
+
+        if (typeof topicos !== 'undefined' && topicos.length > 0) {
+            const div = document.createElement('div');
+            div.style.height = '1px';
+            div.style.backgroundColor = '#eee';
+            menu.appendChild(div);
+
+            topicos.forEach(t => {
+                const opt = document.createElement('div');
+                opt.className = 'jcs-option';
+                opt.innerHTML = `<div class="jcs-color-dot" style="background: ${t.cor};"></div> <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.nome}</span>`;
+                opt.addEventListener('click', () => applyTheme(circleEl, t.id, t.nome, t.cor, menu));
+                menu.appendChild(opt);
+            });
+        }
+
+        document.body.appendChild(menu);
+
+        const rect = circleEl.getBoundingClientRect();
+        menu.style.left = rect.left + 'px';
+        menu.style.top = (rect.bottom + 4) + 'px';
+
+        requestAnimationFrame(() => {
+            menu.style.visibility = 'visible';
+        });
+
+        if (selectorArmTimer) clearTimeout(selectorArmTimer);
+        selectorArmTimer = setTimeout(() => {
+            const closeFn = () => {
+                menu.remove();
+                document.removeEventListener('click', closeFn);
+            };
+            document.addEventListener('click', closeFn);
+        }, 50);
+    }
+
+    function applyTheme(circleEl, id, nome, cor, menu) {
+        circleEl.dataset.topicId = id;
+        circleEl.style.backgroundColor = cor;
+        circleEl.title = nome;
+        if(id === 'global') {
+            circleEl.style.border = '2px solid #cbd5e1';
+            circleEl.style.boxShadow = 'none';
+        } else {
+            circleEl.style.border = '2px solid transparent';
+            circleEl.style.boxShadow = `0 0 6px ${cor}40`;
+        }
+        menu.remove();
+        if(typeof salvarBackupAutomatico === 'function') salvarBackupAutomatico();
+    }
+
+    function getTarefasState() {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return [];
+        
+        return Array.from(container.querySelectorAll('.native-task-item')).map(item => {
+            const chk = item.querySelector('input[type="checkbox"]');
+            const txt = item.querySelector('input[type="text"]');
+            const ind = item.querySelector('.topic-circle-indicator');
+            return {
+                concluida: chk.checked,
+                texto: txt.value,
+                topicId: ind ? ind.dataset.topicId : 'global',
+                topicCor: ind ? ind.style.backgroundColor : '#ffffff'
+            };
+        });
+    }
+
+    function setTarefasState(tarefasArray) {
+        const container = document.getElementById('native-obs-list');
+        if(!container) return;
+        container.innerHTML = '';
+        
+        if(!tarefasArray || tarefasArray.length === 0) {
+            atualizarBadge();
+            return;
+        }
+
+        tarefasArray.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'native-task-item';
+            if(t.concluida) div.classList.add('completed');
+            
+            const checkedAttr = t.concluida ? 'checked="checked"' : '';
+            const borderStyle = t.topicId === 'global' ? '2px solid #cbd5e1' : '2px solid transparent';
+            const shadowStyle = t.topicId === 'global' ? 'none' : `0 0 6px ${t.topicCor}40`;
+
+            div.innerHTML = `
+                <input type="checkbox" onchange="TaskManager.toggleConcluido(this)" ${checkedAttr}>
+                <div class="topic-circle-indicator" data-topic-id="${t.topicId}" title="${t.topicId === 'global' ? 'Global' : 'Tópico Específico'}" style="background-color: ${t.topicCor}; border: ${borderStyle}; box-shadow: ${shadowStyle};" onclick="TaskManager.abrirSeletorTemas(this, event)"></div>
+                <input type="text" placeholder="Escreva sua tarefa..." value="${t.texto.replace(/"/g, '&quot;')}" oninput="this.setAttribute('value', this.value);">
+                <button onclick="this.parentElement.remove(); TaskManager.atualizarBadge();" style="border:none; background:none; cursor:pointer; color:#ef4444; margin-left: 8px;">✕</button>
+            `;
+            container.appendChild(div);
+        });
+        atualizarBadge();
+    }
+
+    return { abrirModal, fecharModal, adicionarTarefa, toggleConcluido, atualizarBadge, abrirSeletorTemas, getTarefasState, setTarefasState };
+})();

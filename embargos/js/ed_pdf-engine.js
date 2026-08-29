@@ -166,6 +166,42 @@ window.PdfEngine = (function () {
         }
     }
 
+    const _footerBoundaryCache = new Map();
+
+    /**
+     * Detecta, para uma página específica, a coordenada Y (em pixels de viewport,
+     * escala 1.5 — a mesma usada na renderização) a partir da qual o conteúdo
+     * é bloco de assinatura eletrônica. Usa reconhecimento de padrão textual,
+     * não percentuais fixos, para se adaptar a rodapés de tamanhos diferentes.
+     */
+    async function obterLimiteRodape(pageNum) {
+        if (_footerBoundaryCache.has(pageNum)) return _footerBoundaryCache.get(pageNum);
+
+        const REGEX_RODAPE_ASSINATURA = /(Documento\s+assinado\s+eletronicamente\s+por|Assinado\s+(?:digitalmente|eletronicamente)\s+por|Signatário(?:\(a\))?\s*:)/i;
+
+        try {
+            const page = await _pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 });
+            const textContent = await page.getTextContent();
+
+            let limiteY = null;
+            for (const item of textContent.items) {
+                if (REGEX_RODAPE_ASSINATURA.test(item.str)) {
+                    const [, vy] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+                    // Pequena margem de segurança para não cortar a última linha de conteúdo legítimo
+                    const topoDoItem = vy - 4;
+                    if (limiteY === null || topoDoItem < limiteY) limiteY = topoDoItem;
+                }
+            }
+
+            _footerBoundaryCache.set(pageNum, limiteY);
+            return limiteY;
+        } catch (err) {
+            console.warn('Falha ao calcular limite de rodapé da página', pageNum, err);
+            return null;
+        }
+    }
+
     /* ================================================
        EXTRAÇÃO MATEMÁTICA DE TEXTO POR REGIÃO (ALFINETE)
        ================================================ */
@@ -173,66 +209,73 @@ window.PdfEngine = (function () {
     // Função utilitária para liberar a Main Thread (macro-task)
     const _yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 
-    async function extrairTextoPorRegiao(marcoInicio, marcoFim, onProgress = null) {
+    async function extrairTextoPorRegiao(marcoInicio, marcoFim, onProgress = null, onPageRawText = null) {
         if (!_pdfDoc) return "";
-        
-        // LOCK DE INTEGRIDADE: Captura a instância atual do documento
         const targetPdfInstance = _pdfDoc;
         let textoExtraido = "";
         
+        const ESCALA_RENDERIZACAO_UI = 1.5; 
+        const PADDING_SEGURANCA_PTS = 4;
+        const TIME_BUDGET_MS = 40; 
+        
         const pInicio = Math.min(marcoInicio.pagina, marcoFim.pagina);
         const pFim = Math.max(marcoInicio.pagina, marcoFim.pagina);
-        
-        // Garante que o Y Inicial corresponde à página inicial correta (caso o usuário inverta a ordem)
         const yInicioDOM = (pInicio === marcoInicio.pagina) ? marcoInicio.offsetY : marcoFim.offsetY;
         const yFimDOM = (pFim === marcoFim.pagina) ? marcoFim.offsetY : marcoInicio.offsetY;
-        
         const totalPaginas = (pFim - pInicio) + 1;
-        
-        // Inicia o cronômetro para o Time Budget
         let lastYieldTime = performance.now();
-        const TIME_BUDGET_MS = 40; // Limiar de bloqueio aceitável
 
         for (let i = pInicio; i <= pFim; i++) {
-            // VALIDAÇÃO DE ESTADO: Verifica se o usuário trocou o PDF durante um yield
-            if (_pdfDoc !== targetPdfInstance) {
-                throw new Error("CONCURRENCY_VIOLATION: O documento original foi alterado durante a extração.");
-            }
-
-            const page = await _pdfDoc.getPage(i);
-            const viewport = page.getViewport({ scale: 1.5 }); // Mesma escala do renderizador
-            const textContent = await page.getTextContent();
+            if (_pdfDoc !== targetPdfInstance) throw new Error("CONCURRENCY_VIOLATION: O documento original foi alterado durante a extração.");
             
-            // CONVERSÃO CIENTÍFICA: PDF.js 'y' cresce de baixo pra cima. 
-            // Transformamos a coordenada Y do DOM (pixels) para o Y nativo do PDF.
-            const pdfTopBound = (i === pInicio) ? (viewport.height - yInicioDOM) : viewport.height;
-            const pdfBottomBound = (i === pFim) ? (viewport.height - yFimDOM) : 0;
-
-            let textoPagina = textContent.items
-                .filter(item => {
-                    const textY = item.transform[5];
-                    return textY <= pdfTopBound && textY >= pdfBottomBound;
-                })
-                .map(item => item.str)
-                .join(' ');
+            let page = null;
+            try {
+                page = await _pdfDoc.getPage(i);
+                const viewportNative = page.getViewport({ scale: 1.0 }); 
+                const textContent = await page.getTextContent();
                 
-            textoExtraido += textoPagina + " \n\n ";
+                // Hook de Amostragem (Single-Pass)
+                if (onPageRawText) {
+                    onPageRawText(i, textContent.items.map(item => item.str).join(' '));
+                }
+                
+                const yInicioNativo = yInicioDOM / ESCALA_RENDERIZACAO_UI;
+                const yFimNativo = yFimDOM / ESCALA_RENDERIZACAO_UI;
+                let limiteYSuperiorPDF = (i === pInicio) ? (viewportNative.height - yInicioNativo) : viewportNative.height;
+                let limiteYInferiorPDF = (i === pFim) ? (viewportNative.height - yFimNativo) : 0;
 
-            if (onProgress) {
-                try {
-                    const atual = (i - pInicio) + 1;
-                    onProgress(atual, totalPaginas);
-                } catch (e) {
-                    console.warn("[PdfEngine] Erro silenciado no callback de progresso UI.", e);
+                if (i === pInicio) limiteYSuperiorPDF = Math.min(viewportNative.height, limiteYSuperiorPDF - PADDING_SEGURANCA_PTS);
+                if (i === pFim) limiteYInferiorPDF = Math.max(0, limiteYInferiorPDF + PADDING_SEGURANCA_PTS);
+                if (pInicio === pFim && limiteYInferiorPDF > limiteYSuperiorPDF) {
+                    const temp = limiteYSuperiorPDF;
+                    limiteYSuperiorPDF = limiteYInferiorPDF;
+                    limiteYInferiorPDF = temp;
+                }
+
+                let textoPagina = textContent.items
+                    .filter(item => item.transform[5] <= limiteYSuperiorPDF && item.transform[5] >= limiteYInferiorPDF)
+                    .map(item => item.str)
+                    .join(' ');
+                    
+                textoExtraido += textoPagina + " \n\n ";
+
+                if (onProgress) {
+                    try { onProgress((i - pInicio) + 1, totalPaginas); } catch (e) {}
+                }
+            } finally {
+                // Descarte O(1) nativo do V8 / Canvas
+                if (page && typeof page.cleanup === 'function') {
+                    try { page.cleanup(); } catch(e){}
                 }
             }
 
-            // GESTÃO DE PERFORMANCE: Só cede o controle se estourou o orçamento de tempo
             if (performance.now() - lastYieldTime > TIME_BUDGET_MS) {
                 await _yieldToMain();
-                lastYieldTime = performance.now(); // Reseta o cronômetro
+                lastYieldTime = performance.now(); 
             }
         }
+        
+        if (textoExtraido.trim().length === 0) _deps.exibirToast("Não foi possível extrair texto.", "aviso");
         return textoExtraido;
     }
 
@@ -279,10 +322,6 @@ window.PdfEngine = (function () {
 
                     const wrapper = document.getElementById('pdf-wrapper');
                     wrapper.innerHTML = '';
-                    
-                    // INIT DO EVENT DELEGATION
-                    _configurarEventDelegation(); 
-
                     wrapper.style.display = 'flex';
                     document.getElementById('pdf-placeholder').style.display = 'none';
                     document.getElementById('floating-page-panel').style.display = 'flex';
@@ -291,13 +330,27 @@ window.PdfEngine = (function () {
                     if (_pdfDestroyObserver) _pdfDestroyObserver.disconnect();
                     _activePages.clear();
 
-                    // Observer 1: Renderiza cedo (800px)
+                    // Observer de Renderização com Micro-Task Filtering e Skeleton State (Adaptado ED: 800px)
                     _pdfRenderObserver = new IntersectionObserver((entries) => {
                         entries.forEach(entry => {
-                            if (entry.isIntersecting && entry.target.dataset.loaded === 'false') {
-                                const pageNum = parseInt(entry.target.dataset.pageNumber);
-                                renderizarPaginaElemento(pageNum, entry.target);
-                                entry.target.dataset.loaded = 'true';
+                            const container = entry.target;
+                            
+                            if (entry.isIntersecting) {
+                                if (container.dataset.loaded === 'false') {
+                                    // Altera o estado imediatamente para mostrar o Spinner
+                                    container.dataset.loaded = 'loading'; 
+                                    
+                                    container._scrollRaf = requestAnimationFrame(() => {
+                                        renderizarPaginaElemento(parseInt(container.dataset.pageNumber), container);
+                                    });
+                                }
+                            } else {
+                                // Se saiu da tela rápido demais, aborta o frame e volta pro estado false
+                                if (container._scrollRaf && container.dataset.loaded === 'loading') {
+                                    cancelAnimationFrame(container._scrollRaf);
+                                    container._scrollRaf = null;
+                                    container.dataset.loaded = 'false';
+                                }
                             }
                         });
                     }, { root: document.getElementById('pdf-container'), rootMargin: '800px 0px', threshold: 0 });
@@ -332,31 +385,8 @@ window.PdfEngine = (function () {
                     const firstPage = await pdf.getPage(1);
                     const viewportCSS = firstPage.getViewport({ scale: 1.5 });
 
-                    try {
-                        const textContentFirstPage = await firstPage.getTextContent();
-                        // 1. Higieniza o texto (remove espaços e quebras de linha invisíveis)
-                        const rawString = textContentFirstPage.items.map(item => item.str).join('');
-                        const sanitizedString = rawString.replace(/\s+/g, '');
-
-                        // 2. Regex robusta CNJ: Captura 7 dígitos, 2 dígitos e 4 do ano
-                        const cnjRegex = /(\d{7})[-]?(\d{2})\.?(\d{4})\.?\d\.?\d{2}\.?\d{4}/;
-                        const match = sanitizedString.match(cnjRegex);
-
-                        if (match && typeof _deps.onProcessoIdentificado === 'function') {
-                            // Modificação: Em vez de parseInt, aplicamos slice(-4) na string de 7 dígitos.
-                            // Isso preserva os zeros necessários para formar 4 casas decimais.
-                            const sequencialLimpo = match[1].slice(-4); 
-                            const digito = match[2];
-                            const ano = match[3];
-
-                            // Monta o formato ultra-curto (Ex: 0541-68.2025)
-                            const numeroUltraCurto = `${sequencialLimpo}-${digito}.${ano}`; 
-                            
-                            _deps.onProcessoIdentificado(numeroUltraCurto);
-                        }
-                    } catch (err) {
-                        console.warn("[Juris Notes ED] Falha ao tentar capturar o número do processo na capa.", err);
-                    }
+                    // -- INÍCIO: OTIMIZAÇÃO DE MONTAGEM O(1) COM DOCUMENT FRAGMENT --
+                    const fragment = document.createDocumentFragment();
 
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const pageContainer = document.createElement('div');
@@ -371,11 +401,35 @@ window.PdfEngine = (function () {
                             background-color: var(--pdf-bg-color);
                             box-shadow: var(--shadow-md);
                         `;
-                        wrapper.appendChild(pageContainer);
+                        fragment.appendChild(pageContainer);
                         
                         _pdfRenderObserver.observe(pageContainer);
                         _pdfDestroyObserver.observe(pageContainer);
                         _pdfReadTracker.observe(pageContainer);
+                    }
+                    
+                    wrapper.appendChild(fragment);
+                    // -- FIM: OTIMIZAÇÃO DE MONTAGEM O(1) --
+
+                    try {
+                        const textContentFirstPage = await firstPage.getTextContent();
+                        const rawString = textContentFirstPage.items.map(item => item.str).join('');
+                        const sanitizedString = rawString.replace(/\s+/g, '');
+
+                        const cnjRegex = /(\d{7})[-]?(\d{2})\.?(\d{4})\.?\d\.?\d{2}\.?\d{4}/;
+                        const match = sanitizedString.match(cnjRegex);
+
+                        if (match && typeof _deps.onProcessoIdentificado === 'function') {
+                            const sequencialLimpo = match[1].slice(-4); 
+                            const digito = match[2];
+                            const ano = match[3];
+
+                            const numeroUltraCurto = `${sequencialLimpo}-${digito}.${ano}`; 
+                            
+                            _deps.onProcessoIdentificado(numeroUltraCurto);
+                        }
+                    } catch (err) {
+                        console.warn("[Juris Notes ED] Falha ao tentar capturar o número do processo na capa.", err);
                     }
 
                     await _deps.onPdfCarregado(isRetomada);
@@ -470,10 +524,16 @@ window.PdfEngine = (function () {
                     linkService: jurisLinkService 
                 });
             }
+            
+            // NOVO: Apenas após TODO o canvas e texto serem renderizados, marcamos como true.
+            container.dataset.loaded = 'true'; 
+
         } catch (err) {
             if (err.name !== 'RenderingCancelledException') {
                 console.error('Erro ao renderizar página PDF:', err);
             }
+            // NOVO: Se a renderização for cancelada ou falhar, volta ao estado vazio
+            container.dataset.loaded = 'false';
         } finally {
             container._renderTask = null;
         }
@@ -484,35 +544,25 @@ window.PdfEngine = (function () {
        ================================================ */
     function _renderizarHighlightsDaPagina(pageNum, highlightLayerDiv) {
         highlightLayerDiv.innerHTML = ''; 
-        const fragment = document.createDocumentFragment(); // Isolamento na RAM
         const topicos = _deps.getTopicos();
         
         topicos.forEach(topico => {
             const borderCor = topico.cor;
-            const textCor = window.TopicsManager && typeof window.TopicsManager.obterCorContraste === 'function' 
-                ? window.TopicsManager.obterCorContraste(topico.cor) 
-                : '#ffffff';
 
             const desenharMarcacoes = (itens, parentIndex) => {
                 if (!itens) return;
                 itens.forEach((item, idx) => {
-                    const indiceDestino = parentIndex !== undefined ? parentIndex : idx;
-                    const numIdeia = indiceDestino + 1;
+                    const numIdeia = (parentIndex !== undefined ? parentIndex : idx) + 1;
 
                     if ((item.tipo === 'texto' || item.tipo === 'imagem') && item.paginaFisica === pageNum && item.highlightRects && item.highlightRects.length > 0) {
                         const firstRect = item.highlightRects[0];
-                        
-                        // Criação do Crachá (Sem listeners, apenas data-attributes)
                         const badge = document.createElement('div');
                         badge.className = 'pdf-annotation-badge';
                         badge.style.backgroundColor = topico.cor;
-                        badge.style.color = textCor;
+                        if (window.TopicsManager && typeof window.TopicsManager.obterCorContraste === 'function') {
+                            badge.style.color = window.TopicsManager.obterCorContraste(topico.cor);
+                        }
                         badge.innerText = numIdeia;
-                        
-                        // Injeção de estado para o Event Delegation
-                        badge.dataset.topicId = topico.id;
-                        badge.dataset.topicNome = topico.nome;
-                        badge.dataset.index = indiceDestino;
 
                         if (item.tipo === 'texto') {
                             item.highlightRects.forEach(rect => {
@@ -523,7 +573,7 @@ window.PdfEngine = (function () {
                                 marker.style.width = rect.width + 'px';
                                 marker.style.height = rect.height + 'px';
                                 marker.style.borderBottom = `2.5px solid ${borderCor}`;
-                                fragment.appendChild(marker);
+                                highlightLayerDiv.appendChild(marker);
                             });
                             badge.style.top = (firstRect.top + (firstRect.height / 2)) + 'px';
                             badge.style.transform = 'translateY(-50%)'; 
@@ -536,23 +586,62 @@ window.PdfEngine = (function () {
                                 marker.style.width = rect.width + 'px';
                                 marker.style.height = rect.height + 'px';
                                 marker.style.border = `1.5px dashed ${borderCor}`;
-                                fragment.appendChild(marker);
+                                highlightLayerDiv.appendChild(marker);
                             });
                             badge.style.top = firstRect.top + 'px';
                             badge.style.right = 'auto';
                             badge.style.left = Math.max(4, firstRect.left - 28) + 'px';
                         }
                         
-                        fragment.appendChild(badge);
+                        badge.addEventListener('mouseenter', (e) => {
+                            const tooltip = document.getElementById('quick-intent-tooltip');
+                        if (!tooltip) return;
+                        tooltip.innerHTML = `<strong>Tópico Vinculado</strong>${topico.nome}<br><span style="font-size:0.75rem; color:#aab; display:block; margin-top:4px;">(Ctrl + Clique para acessar a anotação)</span>`;
+                        tooltip.style.display = 'block';
+                        tooltip.classList.remove('visible');
+                        
+                        let x = e.clientX + 15;
+                        let y = e.clientY + 15;
+                        const rect = tooltip.getBoundingClientRect();
+                        if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 15;
+                        if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - 15;
+                        
+                        tooltip.style.left = `${x}px`;
+                        tooltip.style.top = `${y}px`;
+                        requestAnimationFrame(() => tooltip.classList.add('visible'));
+                    });
+                    
+                    badge.addEventListener('mouseleave', () => {
+                        const tooltip = document.getElementById('quick-intent-tooltip');
+                        if (tooltip) {
+                            tooltip.classList.remove('visible');
+                            setTimeout(() => { tooltip.style.display = 'none'; }, 200);
+                        }
+                    });
+
+                    // Gatilho de Viagem (Navegação Reversa)
+                    badge.addEventListener('click', (e) => {
+                        if (e.ctrlKey && !e.shiftKey) {
+                            e.preventDefault();
+                            e.stopPropagation(); // Bloqueia propagação p/ o container e popups indesejados
+                            
+                            if (window.navegarParaAnotacao) {
+                                const indiceDestino = parentIndex !== undefined ? parentIndex : idx;
+                                window.navegarParaAnotacao(topico.id, indiceDestino);
+                            }
+                        }
+                    });
+
+                    highlightLayerDiv.appendChild(badge);
                     }
                     if (item.itensCorrelacionados) {
-                        desenharMarcacoes(item.itensCorrelacionados, indiceDestino);
+                        desenharMarcacoes(item.itensCorrelacionados, parentIndex !== undefined ? parentIndex : idx);
                     }
                 });
             };
             desenharMarcacoes(topico.anotacoes);
 
-            // Alfinetes de Extração
+            // [NOVO] Renderização dos Alfinetes de Extração (Dumb Components)
             if (topico.marcosExtracao && topico.marcosExtracao.length > 0) {
                 topico.marcosExtracao.forEach(marco => {
                     if (marco.pagina === pageNum) {
@@ -562,27 +651,24 @@ window.PdfEngine = (function () {
                         pin.style.borderColor = topico.cor; 
                         pin.style.color = topico.cor; 
                         
+                        // DATA-ATTRIBUTES para a Event Delegation (Performance)
                         pin.dataset.tooltipFronteira = marco.fronteira;
                         pin.dataset.tooltipDoc = marco.docTipo;
                         pin.dataset.tooltipTopico = topico.nome;
 
                         pin.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M16 11.78L20.24 16H13v6l-1 2-1-2v-6H3.76L8 11.78V4h1V2h6v2h1v7.78z"></path></svg>`;
 
-                        fragment.appendChild(pin);
+                        highlightLayerDiv.appendChild(pin);
                     }
                 });
             }
         });
-
-        highlightLayerDiv.appendChild(fragment); // Escrita O(1) no DOM real
     }
 
     function sincronizarHighlightsGerais() {
-        // Spatial-Slicing: Atualiza APENAS as páginas rastreadas como visíveis 
-        // ou na margem de histerese ativa do IntersectionObserver original.
-        _activePages.forEach(container => {
+        document.querySelectorAll('.pdf-page-container').forEach(container => {
             if (container.dataset.loaded === 'true') {
-                const pageNum = parseInt(container.dataset.pageNumber, 10);
+                const pageNum = parseInt(container.dataset.pageNumber);
                 const highlightLayerDiv = container.querySelector('.highlightLayer');
                 if (highlightLayerDiv) {
                     _renderizarHighlightsDaPagina(pageNum, highlightLayerDiv);
@@ -643,71 +729,6 @@ window.PdfEngine = (function () {
         _currentPage = 1;
     }
 
-    /* ================================================
-       EVENT DELEGATION: HIGHLIGHTS E TOOLTIPS (O(1) Memory)
-       ================================================ */
-    function _configurarEventDelegation() {
-        const container = document.getElementById('pdf-container');
-        if (!container || container.dataset.delegationBound) return;
-
-        // Tooltip Singleton
-        let _tooltip = null;
-
-        // Delegação de Hover (Mouseover / Mouseout)
-        container.addEventListener('mouseover', (e) => {
-            const badge = e.target.closest('.pdf-annotation-badge');
-            if (!badge) return;
-
-            if (!_tooltip) _tooltip = document.getElementById('quick-intent-tooltip');
-            if (!_tooltip) return;
-
-            const topicNome = badge.dataset.topicNome;
-            
-            _tooltip.innerHTML = `<strong>Tópico Vinculado</strong>${topicNome}<br><span style="font-size:0.75rem; color:#aab; display:block; margin-top:4px;">(Ctrl + Clique para acessar a anotação)</span>`;
-            _tooltip.style.display = 'block';
-            _tooltip.classList.remove('visible');
-            
-            let x = e.clientX + 15;
-            let y = e.clientY + 15;
-            const rect = _tooltip.getBoundingClientRect();
-            
-            if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 15;
-            if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - 15;
-            
-            _tooltip.style.left = `${x}px`;
-            _tooltip.style.top = `${y}px`;
-            requestAnimationFrame(() => _tooltip.classList.add('visible'));
-        });
-
-        container.addEventListener('mouseout', (e) => {
-            const badge = e.target.closest('.pdf-annotation-badge');
-            if (!badge || !_tooltip) return;
-            
-            _tooltip.classList.remove('visible');
-            setTimeout(() => { _tooltip.style.display = 'none'; }, 200);
-        });
-
-        // Delegação de Click
-        container.addEventListener('click', (e) => {
-            const badge = e.target.closest('.pdf-annotation-badge');
-            if (!badge) return;
-
-            if (e.ctrlKey && !e.shiftKey) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                const topicId = badge.dataset.topicId;
-                const index = parseInt(badge.dataset.index, 10);
-                
-                if (window.navegarParaAnotacao) {
-                    window.navegarParaAnotacao(topicId, index);
-                }
-            }
-        });
-
-        container.dataset.delegationBound = 'true';
-    }
-
     return {
             init,
             carregarPDF,
@@ -716,6 +737,7 @@ window.PdfEngine = (function () {
             getDisplayLabel,
             extrairMetadadosDaPagina,
             extrairTextoPorRegiao,
+            obterLimiteRodape,
             resolverPagina,
             goToPage: jurisLinkService.goTo,
             getPdfDoc: () => _pdfDoc,

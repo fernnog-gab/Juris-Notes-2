@@ -17,8 +17,9 @@ window.limparFiltroIAAcervo = function() {
     window.abrirModalAcervo(); 
 };
 // ==========================================
-// ESTADO DO ACERVO (Isolado e Seguro)
+// ESTADO DO ACERVO E MODAL SALVAR
 // ==========================================
+let _cacheModelosSalvar = [];
 let _modeloSelecionadoId = null;
 let _modeloSelecionadoNodes = [];
 let _tagsGlobais = [];
@@ -31,6 +32,28 @@ let _paginaAtualRenderizacao = 0;
 const TAMANHO_LOTE_RENDERIZACAO = 20;
 let _observerScrollAcervo = null;
 let _eventDelegationAtivo = false;
+
+// ==========================================
+// TRAVA DE ESTADO ARQUITETURAL (State Lock)
+// ==========================================
+let _isViewTransitioning = false;
+
+/**
+ * Helper de Sanitização Arquitetural
+ * Garante a proteção contra XSS (Cross-Site Scripting).
+ * Tenta usar o serviço global, faz fallback seguro para API nativa do DOM em caso de falha.
+ */
+function _safeEscaparHTML(str) {
+    if (!str) return '';
+    // Tenta usar a dependência externa primária
+    if (typeof TopicsManager !== 'undefined' && typeof TopicsManager.escaparHTML === 'function') {
+        return TopicsManager.escaparHTML(str);
+    }
+    // Fallback Defensivo Inquebrável (Browser DOM API)
+    const divFantasma = document.createElement('div');
+    divFantasma.textContent = str; // textContent converte tags em texto puro de forma segura
+    return divFantasma.innerHTML;
+}
 
 // HELPER PRIVADO (Defesa de UI)
 function _safeDisplay(id, styleStr) {
@@ -65,8 +88,27 @@ window.atualizarIconeAcervoUI = function(selectElement) {
     }
 };
 
-// Filtro totalmente em memória (RAM Speed)
-window.filtrarListaUI = function(termo, listaId) { // listaId mantido para retrocompatibilidade
+window.debounce = function(func, wait) {
+    let timeout;
+    const debounced = function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+    debounced.cancel = () => clearTimeout(timeout);
+    return debounced;
+};
+
+// Renomeada e refatorada: O parâmetro inútil 'listaId' foi removido.
+window.filtrarAcervoPrincipal = function(termo) { 
+    // GUARD CLAUSE: Impede mutação do DOM durante transições ou modo foco ativo
+    const focusView = document.getElementById('acervo-focus-view');
+    const isFocoAtivo = focusView && focusView.classList.contains('is-active');
+    
+    if (_isViewTransitioning || isFocoAtivo) {
+        console.warn("[ED Acervo] Mutação de lista bloqueada: UI travada pelo modo foco.");
+        return; 
+    }
+
     const termoMin = termo.toLowerCase().trim();
     
     if (!termoMin) {
@@ -81,7 +123,6 @@ window.filtrarListaUI = function(termo, listaId) { // listaId mantido para retro
 
     _paginaAtualRenderizacao = 0;
     
-    // Limpeza SEGURA - Apenas o wrapper!
     const wrapper = document.getElementById('acervo-items-wrapper');
     if(wrapper) wrapper.innerHTML = ''; 
     
@@ -92,18 +133,10 @@ window.filtrarListaUI = function(termo, listaId) { // listaId mantido para retro
         return;
     }
 
-    // A renderização real é chamada pelo observer ou pela forçada inicial
     renderizarProximoLoteAcervo();
 };
 
-window.debounce = function(func, wait) {
-    let timeout;
-    return function(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), wait);
-    };
-};
-window.filtrarListaUIDebounced = window.debounce(window.filtrarListaUI, 300);
+window.filtrarAcervoPrincipalDebounced = window.debounce(window.filtrarAcervoPrincipal, 300);
 
 // ==========================================
 // MÓDULO 1: SALVAR NO ACERVO
@@ -127,13 +160,17 @@ window.abrirModalSalvarModelo = function() {
     _noAlvoParaSalvar.escopoOriginal = escopoDetectado;
 
     document.getElementById('sub-annotation-context-menu').style.display = 'none';
-    document.querySelector('input[name="modo_salvar_modelo"][value="novo"]').checked = true;
-    document.getElementById('input-nome-modelo').value = '';
-    
-    document.getElementById('wizard-backdrop').style.display = 'block';
-    document.getElementById('modal-salvar-modelo').style.display = 'flex';
-    window.toggleModoSalvarModelo(); 
-};
+        document.querySelector('input[name="modo_salvar_modelo"][value="novo"]').checked = true;
+        document.getElementById('input-nome-modelo').value = '';
+        
+        // Limpeza de segurança na abertura
+        const inputBusca = document.getElementById('input-busca-modelo');
+        if (inputBusca) inputBusca.value = '';
+        
+        document.getElementById('wizard-backdrop').style.display = 'block';
+        document.getElementById('modal-salvar-modelo').style.display = 'flex';
+        window.toggleModoSalvarModelo(); 
+    };
 
 window.toggleModoSalvarModelo = function() {
     const isNovo = document.querySelector('input[name="modo_salvar_modelo"]:checked').value === 'novo';
@@ -142,31 +179,109 @@ window.toggleModoSalvarModelo = function() {
     
     if (!isNovo) {
         const container = document.getElementById('lista-modelos-salvar');
-        container.innerHTML = '<div class="acervo-loader"></div>';
+        const inputBusca = document.getElementById('input-busca-modelo');
         
-        AcervoManager.carregarModelos().then(modelos => {
-            container.innerHTML = modelos.length === 0 ? '<p style="text-align:center; font-size:0.8rem;">Nenhum modelo encontrado.</p>' : '';
-            modelos.forEach(mod => {
-                const item = document.createElement('div');
-                item.className = 'acervo-item';
-                item.innerHTML = `<div class="acervo-item-titulo">${TopicsManager.escaparHTML(mod.nome)}</div><div style="font-size:0.7rem; color:#888;">${mod.nos.length} nó(s) salvos</div>`;
-                item.onclick = () => {
-                    document.querySelectorAll('#lista-modelos-salvar .acervo-item').forEach(el => el.classList.remove('selected'));
-                    item.classList.add('selected');
-                    _modeloSelecionadoId = mod.id;
-                };
-                container.appendChild(item);
-            });
-        }).catch(() => {
-            container.innerHTML = '<p style="color:red; font-size:0.8rem;">Erro ao conectar. Faça login.</p>';
+        // 1. Blindagem de UX (Race Condition Protection)
+        container.innerHTML = '<div class="acervo-loader"></div>';
+        inputBusca.disabled = true;
+        inputBusca.placeholder = '⌛ Carregando modelos...';
+        inputBusca.value = ''; // Limpa buscas anteriores
+        
+        // 2. Fetch com reaproveitamento de Cache global se existir
+        const promessaCarregamento = (_todosModelosEmMemoria && _todosModelosEmMemoria.length > 0)
+            ? Promise.resolve(_todosModelosEmMemoria)
+            : AcervoManager.carregarModelos();
+
+        promessaCarregamento.then(modelos => {
+            // 3. Atualiza Estado Local Isolado (Mapeamento Leve)
+            _cacheModelosSalvar = modelos.map(mod => ({
+                id: mod.id,
+                nome: mod.nome,
+                qtdNos: mod.nos ? mod.nos.length : 0
+            }));
+
+            // 4. Libera UI e aplica Auto-focus
+            inputBusca.disabled = false;
+            inputBusca.placeholder = 'Digite para buscar...';
+            inputBusca.focus();
+
+            // 5. Renderiza Estado Base
+            _renderizarListaSalvar(_cacheModelosSalvar);
+
+        }).catch((e) => {
+            console.error("[Acervo] Erro ao carregar modelos para salvamento:", e);
+            container.innerHTML = '<p style="color:#c62828; font-size:0.8rem; text-align:center;">Erro ao conectar. Tente novamente.</p>';
+            inputBusca.placeholder = 'Falha na conexão.';
         });
     }
 };
 
+// Nova Função de Filtro Puramente Lógica (Array IN -> Array OUT)
+window.filtrarListaSalvar = function(termo) {
+    const termoMin = termo.toLowerCase().trim();
+    
+    if (!termoMin) {
+        _renderizarListaSalvar(_cacheModelosSalvar);
+        return;
+    }
+
+    const modelosFiltrados = _cacheModelosSalvar.filter(mod => 
+        mod.nome.toLowerCase().includes(termoMin)
+    );
+
+    _renderizarListaSalvar(modelosFiltrados);
+};
+
+window.filtrarListaSalvarDebounced = window.debounce(window.filtrarListaSalvar, 300);
+
+// Nova Função de Renderização Pura e Segura
+function _renderizarListaSalvar(arrayDados) {
+    const container = document.getElementById('lista-modelos-salvar');
+    container.innerHTML = ''; // Limpa de forma segura
+    
+    if (arrayDados.length === 0) {
+        container.innerHTML = '<p style="text-align:center; font-size:0.8rem; color:#888; margin-top:10px;">Nenhum modelo compatível encontrado.</p>';
+        return;
+    }
+
+    // Uso de DocumentFragment para evitar Reflows pesados iterativos
+    const fragment = document.createDocumentFragment();
+
+    arrayDados.forEach(mod => {
+        const item = document.createElement('div');
+        item.className = 'acervo-item';
+        // Lógica visual mantida
+        if (_modeloSelecionadoId === mod.id) item.classList.add('selected');
+
+        item.innerHTML = `
+            <div class="acervo-item-titulo">${typeof TopicsManager !== 'undefined' ? TopicsManager.escaparHTML(mod.nome) : mod.nome}</div>
+            <div style="font-size:0.7rem; color:#888;">${mod.qtdNos} nó(s) salvos</div>
+        `;
+        
+        // Event Listener limpo (sem poluição inline no HTML)
+        item.addEventListener('click', () => {
+            document.querySelectorAll('#lista-modelos-salvar .acervo-item').forEach(el => el.classList.remove('selected'));
+            item.classList.add('selected');
+            _modeloSelecionadoId = mod.id;
+        });
+
+        fragment.appendChild(item);
+    });
+
+    container.appendChild(fragment);
+}
+
 window.fecharModalSalvarModelo = function() {
     document.getElementById('wizard-backdrop').style.display = 'none';
     document.getElementById('modal-salvar-modelo').style.display = 'none';
+    
+    // Limpeza de Estado Nativo
     _noAlvoParaSalvar = null;
+    
+    // NOVA LIMPEZA (Stale State Prevention)
+    _cacheModelosSalvar = []; // Esvazia a memória do modal
+    const inputBusca = document.getElementById('input-busca-modelo');
+    if (inputBusca) inputBusca.value = ''; // Limpa o front-end
 };
 
 window.confirmarSalvarModelo = async function() {
@@ -239,7 +354,7 @@ window.abrirModalAcervo = function() {
     
     const listView = document.getElementById('acervo-list-view');
     if (listView) {
-        listView.style.display = 'block';
+        listView.style.display = 'flex';
         listView.style.opacity = '1';
     }
     
@@ -373,6 +488,8 @@ function configurarEventDelegation() {
 
         const card = e.target.closest('.acervo-item');
         if (card) {
+            e.preventDefault();
+            e.stopPropagation(); // Isola o evento
             selecionarEAtivarModelo(card, card.dataset.id);
         }
     });
@@ -380,75 +497,125 @@ function configurarEventDelegation() {
     _eventDelegationAtivo = true;
 }
 
-// Lógica isolada com roteamento nativo do ED
+/* ================================================
+   ROTEAMENTO E SELEÇÃO DE MODELO (Fail-Safe)
+   ================================================ */
 function selecionarEAtivarModelo(cardElement, modeloId) {
-    document.querySelectorAll('#acervo-items-wrapper .acervo-item').forEach(el => el.classList.remove('selected'));
-    cardElement.classList.add('selected');
+    console.log("[Acervo ED] 1. Card clicado. Solicitando ModeloID:", modeloId);
     
-    const mod = _todosModelosEmMemoria.find(m => m.id === modeloId);
-    if (!mod) return;
-
-    _modeloSelecionadoId = mod.id;
-    _modeloSelecionadoNodes = mod.nos;
-    _modeloSelecionadoEscopo = mod.escopo || 'card';
-    
-    const previewHtml = mod.nos.map(n => `
-        <div class="acervo-node-preview">
-            ${getIconeAcervoSVG(n.intencao)}
-            <span class="acervo-node-text wrap-text">${TopicsManager.escaparHTML(n.texto)}</span>
-        </div>
-    `).join('');
-    
-    const previewBox = document.getElementById('box-preview-acervo');
-    previewBox.innerHTML = previewHtml;
-    previewBox.style.display = 'block';
-    
-    window.ativarModoFocoAcervo(mod.nome);
-    
-    // Roteamento Defensivo (Legado do ED)
-    _safeDisplay('box-destino-dinamico-acervo', 'block');
-    _safeDisplay('destino-acervo-card', 'none');
-    _safeDisplay('destino-acervo-tese', 'none');
-    _safeDisplay('destino-acervo-global', 'none');
-    
-    const btnInserir = document.getElementById('btn-inserir-acervo');
-    if(!btnInserir) return;
-    btnInserir.disabled = false;
-
-    const topicoId = typeof TopicsManager !== 'undefined' ? TopicsManager.getActiveTabId() : null;
-    const topico = topicoId ? topicos.find(t => t.id === topicoId) : null;
-
-    if (_modeloSelecionadoEscopo === 'global') {
-        _safeDisplay('destino-acervo-global', 'block');
-        btnInserir.textContent = '✔ Inserir Globalmente';
-    } 
-    else if (_modeloSelecionadoEscopo === 'tese') {
-        _safeDisplay('destino-acervo-tese', 'block');
-        btnInserir.textContent = '✔ Inserir no Vício'; // Nomenclatura ED
-        
-        const selectTese = document.getElementById('select-destino-acervo-tese');
-        const aviso = document.getElementById('aviso-sem-tese');
-        
-        if(selectTese && aviso && topico) {
-            selectTese.innerHTML = '<option value="">Selecione um Vício existente...</option>';
-            const tesesUnicas = [...new Set(topico.anotacoes.filter(a => a.tese && a.tese.trim() !== '').map(a => a.tese))];
-            
-            if (tesesUnicas.length === 0) {
-                selectTese.style.display = 'none';
-                aviso.style.display = 'block';
-                btnInserir.disabled = true;
-            } else {
-                selectTese.style.display = 'block';
-                aviso.style.display = 'none';
-                tesesUnicas.forEach(t => selectTese.appendChild(new Option(t, t)));
-            }
-        }
-    } else {
-        _safeDisplay('destino-acervo-card', 'block');
-        btnInserir.textContent = '✔ Inserir no Card';
+    if (window.filtrarAcervoPrincipalDebounced && window.filtrarAcervoPrincipalDebounced.cancel) {
+        window.filtrarAcervoPrincipalDebounced.cancel();
     }
+    if (window.filtrarListaUIDebounced && window.filtrarListaUIDebounced.cancel) {
+        window.filtrarListaUIDebounced.cancel(); // Fallback para versões mistas
+    }
+    
+    _isViewTransitioning = true; 
 
-    _safeDisplay('btn-inserir-acervo', 'block');
+    try {
+        document.querySelectorAll('#acervo-items-wrapper .acervo-item').forEach(el => el.classList.remove('selected'));
+        cardElement.classList.add('selected');
+        
+        const mod = _todosModelosEmMemoria.find(m => m.id === modeloId);
+        if (!mod) throw new Error(`Modelo não encontrado na memória (ID: ${modeloId}).`);
+
+        _modeloSelecionadoId = mod.id;
+        // DEFESA DE DADOS: Garante que "nos" seja um array válido para evitar crash no .map
+        _modeloSelecionadoNodes = mod.nos || [];
+        _modeloSelecionadoEscopo = mod.escopo || 'card';
+        
+        console.log(`[Acervo ED] 2. Modelo carregado: ${mod.nome}. Qtd Nós: ${_modeloSelecionadoNodes.length}`);
+        
+        // Renderização com fallback visual e blindagem XSS já implementada
+        const previewHtml = _modeloSelecionadoNodes.map(n => {
+            const intencao = n.intencao || 'premissa';
+            const textoLimpo = (typeof _safeEscaparHTML === 'function') 
+                ? _safeEscaparHTML(n.texto || '') 
+                : (n.texto || ''); // Prevenção extrema se o helper global falhar
+
+            return `
+            <div class="acervo-node-preview">
+                ${typeof getIconeAcervoSVG === 'function' ? getIconeAcervoSVG(intencao) : '📄'}
+                <span class="acervo-node-text wrap-text">${textoLimpo}</span>
+            </div>`;
+        }).join('');
+        
+        const previewBox = document.getElementById('box-preview-acervo');
+        if (!previewBox) throw new Error("A div 'box-preview-acervo' não existe no HTML do ED.");
+        
+        previewBox.innerHTML = previewHtml || '<p style="color:#888; text-align:center; margin-top:20px;">Este modelo não possui conteúdo salvo.</p>';
+        previewBox.style.display = 'block';
+        
+        console.log("[Acervo ED] 3. Preview gerado no DOM. Chamando transição de foco...");
+        window.ativarModoFocoAcervo(mod.nome);
+        
+        // Reset de Destinos (UI Legada)
+        _safeDisplay('box-destino-dinamico-acervo', 'block');
+        _safeDisplay('destino-acervo-card', 'none');
+        _safeDisplay('destino-acervo-tese', 'none');
+        _safeDisplay('destino-acervo-global', 'none');
+        
+        const btnInserir = document.getElementById('btn-inserir-acervo');
+        if (btnInserir) btnInserir.disabled = false;
+
+        const topicoId = (typeof TopicsManager !== 'undefined' && typeof TopicsManager.getActiveTabId === 'function') ? TopicsManager.getActiveTabId() : null;
+        let topico = null;
+        if (topicoId && typeof topicos !== 'undefined' && Array.isArray(topicos)) {
+            topico = topicos.find(t => t.id === topicoId);
+        }
+
+        if (_modeloSelecionadoEscopo === 'global') {
+            _safeDisplay('destino-acervo-global', 'block');
+            if(btnInserir) btnInserir.textContent = '✔ Inserir Globalmente';
+        } 
+        else if (_modeloSelecionadoEscopo === 'tese') {
+            _safeDisplay('destino-acervo-tese', 'block');
+            if(btnInserir) btnInserir.textContent = '✔ Inserir no Vício'; 
+            
+            const selectTese = document.getElementById('select-destino-acervo-tese');
+            const aviso = document.getElementById('aviso-sem-tese');
+            
+            if(selectTese && aviso && topico) {
+                selectTese.innerHTML = '<option value="">Selecione um Vício...</option>';
+                const tesesUnicas = [...new Set((topico.anotacoes || []).filter(a => a && a.tese && a.tese.trim() !== '').map(a => a.tese))];
+                
+                if (tesesUnicas.length === 0) {
+                    selectTese.style.display = 'none';
+                    aviso.style.display = 'block';
+                    if(btnInserir) btnInserir.disabled = true;
+                } else {
+                    selectTese.style.display = 'block';
+                    aviso.style.display = 'none';
+                    tesesUnicas.forEach(t => selectTese.appendChild(new Option(t, t)));
+                }
+            }
+        } else {
+            _safeDisplay('destino-acervo-card', 'block');
+            if(btnInserir) btnInserir.textContent = '✔ Inserir no Card';
+        }
+
+        _safeDisplay('btn-inserir-acervo', 'block');
+        console.log("[Acervo ED] 4. Operações Síncronas Concluídas.");
+        
+    } catch (error) {
+        console.error("[Acervo ED] Falha Síncrona (A Tela seria branca aqui):", error);
+        
+        // ROLLBACK OBRIGATÓRIO DA UI
+        const listView = document.getElementById('acervo-list-view');
+        const focusView = document.getElementById('acervo-focus-view');
+        
+        if (focusView) {
+            focusView.style.display = 'none';
+            focusView.classList.remove('is-active');
+        }
+        if (listView) {
+            listView.style.display = 'flex';
+            listView.style.opacity = '1';
+        }
+
+        if (typeof exibirToast === 'function') exibirToast('Erro lógico ao abrir o modelo. Tente novamente.', 'erro');
+        _isViewTransitioning = false; 
+    }
 }
 
 // ==========================================
@@ -1014,25 +1181,71 @@ window.copiarPromptNotebookLM = function() {
 // FUNÇÕES DE CONTROLE DE VIEW SWAP (ACERVO)
 // ==========================================
 
+/* ================================================
+   ANIMAÇÃO E TRANSIÇÃO DE FOCO (Com Proteção de DOM)
+   ================================================ */
 window.ativarModoFocoAcervo = function(tituloModelo) {
-    document.getElementById('focus-modelo-titulo').textContent = TopicsManager.escaparHTML(tituloModelo);
-    
-    const listView = document.getElementById('acervo-list-view');
-    const focusView = document.getElementById('acervo-focus-view');
-    
-    // Animação de saída da lista
-    listView.style.opacity = '0';
-    setTimeout(() => {
-        listView.style.display = 'none';
-        // Prepara e anima entrada do foco
-        focusView.style.display = 'flex';
-        // Força reflow mínimo para garantir a animação de entrada
-        void focusView.offsetWidth; 
-        focusView.classList.add('is-active');
-    }, 250); // Sincronizado com CSS
+    try {
+        const tituloEl = document.getElementById('focus-modelo-titulo');
+        if (tituloEl) {
+            tituloEl.textContent = (typeof _safeEscaparHTML === 'function') ? _safeEscaparHTML(tituloModelo) : tituloModelo;
+        }
+        
+        const listView = document.getElementById('acervo-list-view');
+        const focusView = document.getElementById('acervo-focus-view');
+        
+        if (!listView || !focusView) throw new Error("List View ou Focus View não encontrados no HTML.");
+        
+        console.log("[Acervo ED] 5. Escondendo lista de modelos...");
+        listView.style.opacity = '0'; // Dispara a transição CSS
+        
+        // Bloco Assíncrono - Blindado com Try/Catch Interno
+        setTimeout(() => {
+            try {
+                console.log("[Acervo ED] 6. Timeout concluído. Exibindo foco (Força Bruta)...");
+                
+                listView.style.display = 'none';
+                
+                // Renderização de Força Bruta (Sobrepõe qualquer CSS ausente ou conflituoso no ED)
+                focusView.style.display = 'flex';
+                focusView.style.opacity = '1';
+                focusView.style.visibility = 'visible';
+                
+                // Força o navegador a pintar a tela antes de prosseguir
+                void focusView.offsetWidth; 
+                
+                focusView.classList.add('is-active'); 
+                
+                setTimeout(() => { _isViewTransitioning = false; }, 50); 
+                console.log("[Acervo ED] 7. Transição Visual concluída com sucesso.");
+                
+            } catch (asyncError) {
+                console.error("[Acervo ED] Falha Assíncrona durante a animação:", asyncError);
+                
+                // Rollback Assíncrono (Impede que a tela fique eternamente branca se a animação falhar)
+                if (listView) {
+                    listView.style.display = 'flex';
+                    listView.style.opacity = '1';
+                }
+                if (focusView) {
+                    focusView.style.display = 'none';
+                    focusView.style.opacity = '0';
+                    focusView.classList.remove('is-active');
+                }
+                _isViewTransitioning = false;
+                if (typeof exibirToast === 'function') exibirToast('Falha na renderização visual da tela.', 'aviso');
+            }
+        }, 250); 
+        
+    } catch (e) {
+        console.error("[Acervo ED] Falha crítica inicializando a transição:", e);
+        throw e; // Lança o erro para que a função principal faça o rollback da tela
+    }
 };
 
 window.desativarModoFocoAcervo = function() {
+    _isViewTransitioning = true; // Trava a UI durante o retorno
+    
     const listView = document.getElementById('acervo-list-view');
     const focusView = document.getElementById('acervo-focus-view');
     
@@ -1040,16 +1253,20 @@ window.desativarModoFocoAcervo = function() {
     document.getElementById('modal-acervo-inserir').classList.remove('is-fullscreen');
     
     focusView.classList.remove('is-active');
-    focusView.style.opacity = '0';
+    
     setTimeout(() => {
         focusView.style.display = 'none';
-        listView.style.display = 'block';
-        void listView.offsetWidth;
+        
+        listView.style.display = 'flex';
+        void listView.offsetWidth; // Força reflow
         listView.style.opacity = '1';
         
         // Limpa estado selecionado (legado)
         document.querySelectorAll('#lista-acervo-geral .acervo-item').forEach(el => el.classList.remove('selected'));
         _modeloSelecionadoId = null;
+        
+        // Libera a trava após o painel voltar à tela
+        setTimeout(() => { _isViewTransitioning = false; }, 50);
     }, 250);
 };
 

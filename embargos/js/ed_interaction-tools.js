@@ -35,6 +35,183 @@ let _ultimoTopicoUsadoId     = null;  // Memória inteligente: pré-seleciona na
 let pendingTipo     = null;   // Tipo da extração pendente: 'texto' | 'imagem'
 let pendingConteudo = null;   // Conteúdo bruto da extração pendente
 
+/* ================================================
+   CONTROLADOR SINGLETON DO DROPDOWN (PREVINE MEMORY LEAKS E CLIPPING)
+   ================================================ */
+const DropdownManager = (function() {
+    let _activeTrigger = null;
+    let _activePortal = null;
+    let _eventosGlobaisRegistrados = false;
+
+    function fecharAtivo() {
+        if (_activePortal) {
+            _activePortal.remove();
+            _activePortal = null;
+        }
+        if (_activeTrigger) {
+            _activeTrigger.setAttribute('aria-expanded', 'false');
+            _activeTrigger.focus();
+            _activeTrigger = null;
+        }
+    }
+
+    function registrarEventosGerais() {
+        if (_eventosGlobaisRegistrados) return;
+        
+        document.addEventListener('click', (e) => {
+            if (_activePortal && !_activePortal.contains(e.target) && !_activeTrigger.contains(e.target)) {
+                fecharAtivo();
+            }
+        });
+
+        window.addEventListener('scroll', (e) => {
+            if (_activePortal && (e.target === _activePortal || _activePortal.contains(e.target))) {
+                return;
+            }
+            fecharAtivo();
+        }, { passive: true, capture: true });
+        
+        window.addEventListener('resize', fecharAtivo, { passive: true });
+        
+        _eventosGlobaisRegistrados = true;
+    }
+
+    function abrirPortal(triggerEl, topicosArray, selectNativo, onSelectCallback) {
+        fecharAtivo(); 
+        
+        _activeTrigger = triggerEl;
+        _activeTrigger.setAttribute('aria-expanded', 'true');
+
+        const rect = triggerEl.getBoundingClientRect();
+        
+        _activePortal = document.createElement('div');
+        _activePortal.className = 'jcs-options-portal';
+        _activePortal.setAttribute('role', 'listbox');
+        
+        const desiredWidth = Math.max(rect.width, 380);
+        _activePortal.style.width = `${desiredWidth}px`;
+
+        if (rect.left + desiredWidth > window.innerWidth) {
+            _activePortal.style.left = `${window.innerWidth - desiredWidth - 16}px`;
+        } else {
+            _activePortal.style.left = `${rect.left}px`;
+        }
+        
+        _activePortal.style.top = `${rect.bottom + 4}px`;
+
+        let focusedIndex = -1;
+        const optionsNodes = [];
+
+        topicosArray.forEach((t, index) => {
+            const opt = document.createElement('div');
+            opt.className = 'jcs-option';
+            opt.setAttribute('role', 'option');
+            opt.innerHTML = `<div class="jcs-color-dot" style="background-color: ${t.cor};"></div> <span>${t.nome}</span>`;
+            
+            const selecionarOpcao = () => {
+                selectNativo.value = t.id;
+                triggerEl.querySelector('.jcs-trigger-content').innerHTML = opt.innerHTML;
+                
+                selectNativo.dispatchEvent(new Event('change'));
+                if (onSelectCallback) onSelectCallback(t);
+                
+                fecharAtivo();
+            };
+
+            opt.addEventListener('click', selecionarOpcao);
+            opt.addEventListener('mousemove', () => atualizarFoco(index));
+
+            optionsNodes.push({ node: opt, selectFn: selecionarOpcao });
+            _activePortal.appendChild(opt);
+        });
+
+        function atualizarFoco(newIndex) {
+            if (focusedIndex >= 0) optionsNodes[focusedIndex].node.classList.remove('is-focused');
+            focusedIndex = newIndex;
+            if (focusedIndex >= 0) {
+                optionsNodes[focusedIndex].node.classList.add('is-focused');
+                optionsNodes[focusedIndex].node.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        _activePortal.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                atualizarFoco((focusedIndex + 1) % optionsNodes.length);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                atualizarFoco((focusedIndex - 1 + optionsNodes.length) % optionsNodes.length);
+            } else if (e.key === 'Enter' && focusedIndex >= 0) {
+                e.preventDefault();
+                optionsNodes[focusedIndex].selectFn();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                fecharAtivo();
+            }
+        });
+
+        document.body.appendChild(_activePortal); 
+        _activePortal.setAttribute('tabindex', '-1');
+        _activePortal.focus(); 
+    }
+
+    function renderizar(selectId, topicosArray, preSelecionadoId = null, onSelectCallback = null) {
+        registrarEventosGerais();
+        
+        const selectNativo = document.getElementById(selectId);
+        if (!selectNativo) return;
+
+        const topicosOrdenados = [...topicosArray].reverse();
+
+        selectNativo.innerHTML = '<option value="">Selecione o Tópico...</option>';
+        topicosOrdenados.forEach(t => selectNativo.appendChild(new Option(t.nome, t.id)));
+        if (preSelecionadoId) selectNativo.value = preSelecionadoId;
+        
+        selectNativo.classList.add('sr-only');
+
+        const wrapperAntigo = selectNativo.nextElementSibling;
+        if (wrapperAntigo && wrapperAntigo.classList.contains('juris-custom-select')) {
+            wrapperAntigo.remove();
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'juris-custom-select';
+        
+        const topicoInicial = topicosOrdenados.find(t => t.id === preSelecionadoId);
+        const triggerHtml = topicoInicial 
+            ? `<div class="jcs-color-dot" style="background-color: ${topicoInicial.cor};"></div> <span>${topicoInicial.nome}</span>`
+            : `<span class="jcs-placeholder-text">Selecione o Tópico...</span>`;
+
+        wrapper.innerHTML = `
+            <div class="jcs-trigger" tabindex="0" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                <div style="display:flex; align-items:center; gap:10px;" class="jcs-trigger-content">
+                    ${triggerHtml}
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="width:16px; height:16px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+        `;
+
+        const triggerBtn = wrapper.querySelector('.jcs-trigger');
+
+        const abrir = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            abrirPortal(triggerBtn, topicosOrdenados, selectNativo, onSelectCallback);
+        };
+
+        triggerBtn.addEventListener('click', abrir);
+        triggerBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') abrir(e);
+        });
+
+        selectNativo.parentNode.insertBefore(wrapper, selectNativo.nextSibling);
+    }
+
+    return { renderizar };
+})();
+
+window.DropdownManager = DropdownManager;
+
 window.toggleModoFoco = function(ativar) {
     const pdfContainer = document.getElementById('pdf-container');
     if (pdfContainer) {
@@ -122,15 +299,11 @@ function renderizarFasesModais(context) {
 function toggleAgruparPopup() {
     const isAgrupar = document.querySelector('input[name="modo_agrupar_popup"]:checked').value === 'agrupar';
     document.getElementById('input-ideia-popup').style.display = isAgrupar ? 'block' : 'none';
-    document.getElementById('vicio-popup-select').style.display = isAgrupar ? 'none' : 'block';
-    if(isAgrupar) document.getElementById('input-ideia-popup').focus();
 }
 
 function toggleAgruparWizard() {
     const isAgrupar = document.querySelector('input[name="modo_agrupar_wizard"]:checked').value === 'agrupar';
     document.getElementById('input-ideia-wizard').style.display = isAgrupar ? 'block' : 'none';
-    document.getElementById('vicio-wizard-select').style.display = isAgrupar ? 'none' : 'block';
-    if(isAgrupar) document.getElementById('input-ideia-wizard').focus();
 }
 
 function processarAgrupamento(topicoId, inputId) {
@@ -156,22 +329,10 @@ function selecionarDocumento(docLabel, polo, context) {
 
     const inputId = context === 'popup' ? 'input-ideia-popup' : 'input-ideia-wizard';
     const targetIndex = processarAgrupamento(topicoId, inputId);
-    if (targetIndex === false) return; // Erro validado pelo input de agrupamento
+    if (targetIndex === false) return; 
 
     _pendingTargetIndex = targetIndex;
-    _wizardVicioSelecionado = null;
-
-    // NOVO: Validação Antecipada. Trava ANTES de pedir polo.
-    if (targetIndex === null) {
-        const vicioSelectId = context === 'popup' ? 'vicio-popup-select' : 'vicio-wizard-select';
-        const vicio = document.getElementById(vicioSelectId).value;
-        if (!vicio) {
-            exibirToast('Por favor, classifique o Vício Alegado antes de prosseguir.', 'erro');
-            return; // Bloqueia fluxo
-        }
-        _wizardVicioSelecionado = vicio;
-    }
-
+    
     if (polo === 'DUAL') {
         _docSelecionado = docLabel;
         _isWizardContext = (context === 'wizard');
@@ -196,7 +357,6 @@ function selecionarDocumento(docLabel, polo, context) {
             htmlBotoes += `<button class="chip-btn chip-re" onclick="confirmarPolo('Parte Ré', event)">✔ Parte Ré</button>`;
         }
         
-        // Renderiza o botão Voltar com container extra se for no Wizard para preservar o layout original
         if (context === 'popup') {
             htmlBotoes += `<button class="chip-btn chip-cancelar" onclick="voltarParaDocumentos('popup', event)">← Voltar</button>`;
         } else {
@@ -227,38 +387,33 @@ function voltarParaDocumentos(context, event) {
 }
 
 function executarSalvamento(docLabel, polo, topicoId, targetIndex, context) {
-    // 1. Identificar a fase via DOC_CONFIG centralizado
     const conf = DOC_CONFIG.find(d => d.label === docLabel);
     const faseNova = conf ? conf.fase : 4;
 
-    // 2. Middleware (Guardrail Client-Side)
     if (faseNova === 4 && targetIndex === null) {
         const topicoAlvo = topicos.find(t => t.id === topicoId);
         if (topicoAlvo) {
-            // Conta quantas provas fáticas raiz já existem
             const qtdFase4 = topicoAlvo.anotacoes.filter(a => {
                 const aConf = DOC_CONFIG.find(d => d.label === a.documento);
                 return aConf && aConf.fase === 4;
             }).length;
             
-            if (qtdFase4 >= 1) { // Dispara a partir do segundo item
+            if (qtdFase4 >= 1) { 
                 exibirToast("⚠️ Guardrail ED: Extrações extensas configuram risco de rejulgamento fático. Limite-se a falhas estruturais.", "aviso");
             }
         }
     }
 
-    // 3. Execução normal e delegação ao core
     if (context === 'popup') {
         const comentario = document.getElementById('comentario-input').value.trim();
-        salvarAnotacao(pendingTipo, pendingConteudo, docLabel, polo, topicoId, comentario, targetIndex, null, _wizardVicioSelecionado);
+        salvarAnotacao(pendingTipo, pendingConteudo, docLabel, polo, topicoId, comentario, targetIndex, null, null);
         fecharPopupClassificacao();
     } else {
         _ultimoTopicoUsadoId = topicoId;
         const comentario = document.getElementById('crop-comment-input').value.trim();
-        salvarAnotacao('imagem', _wizardImagemCapturada, docLabel, polo, topicoId, comentario, targetIndex, null, _wizardVicioSelecionado);
+        salvarAnotacao('imagem', _wizardImagemCapturada, docLabel, polo, topicoId, comentario, targetIndex, null, null);
         fecharTudoWizard();
     }
-    _wizardVicioSelecionado = null; // Libera memória
 }
 
 /* ================================================
@@ -280,12 +435,7 @@ function iniciarRecorteWizard() {
         return;
     }
 
-    const select = document.getElementById('crop-topic-select');
-    select.innerHTML = '<option value="">Selecione o Tópico...</option>';
-    topicos.forEach(t => select.appendChild(new Option(t.nome, t.id)));
-
-    // Memória inteligente: pré-seleciona o último tópico utilizado
-    if (_ultimoTopicoUsadoId) select.value = _ultimoTopicoUsadoId;
+    DropdownManager.renderizar('crop-topic-select', topicos, _ultimoTopicoUsadoId);
 
     document.getElementById('wizard-backdrop').style.display  = 'block';
     document.getElementById('crop-wizard-step1').style.display = 'flex';
@@ -413,10 +563,6 @@ function fecharTudoWizard() {
     document.getElementById('crop-wizard-step1').style.display = 'none';
     document.getElementById('crop-wizard-step2').style.display = 'none';
     document.getElementById('wizard-backdrop').style.display   = 'none';
-    
-    // LIMPEZA DE ESTADO DE COMPONENTES
-    const vicioWizard = document.getElementById('vicio-wizard-select');
-    if (vicioWizard) vicioWizard.value = ''; // FIX: State Leakage Evitado
 
     _wizardTopicoSelecionado = null;
     _wizardImagemCapturada   = null;
@@ -442,7 +588,6 @@ function fecharPopupClassificacao() {
     
     // LIMPEZA DE ESTADO DE COMPONENTES
     document.getElementById('input-ideia-popup').value = '';
-    document.getElementById('vicio-popup-select').value = ''; // FIX: State Leakage Evitado
 
     const txtArea = document.getElementById('comentario-input');
     if (txtArea) {
@@ -472,13 +617,7 @@ function exibirPopupClassificacao(tipo, conteudo) {
     pendingTipo = tipo;
     pendingConteudo = conteudo;
 
-    const select = document.getElementById('seletor-topico');
-    select.innerHTML = '<option value="">Selecione o Tópico...</option>';
-    topicos.forEach(t => {
-        const opt = new Option(t.nome, t.id);
-        opt.dataset.cor = t.cor;
-        select.appendChild(opt);
-    });
+    DropdownManager.renderizar('seletor-topico', topicos);
 
     document.getElementById('agrupamento-popup-box').style.display = 'none';
     document.querySelector('input[name="modo_agrupar_popup"][value="nova"]').checked = true;
@@ -598,15 +737,8 @@ overlay.addEventListener('mousedown', function (e) {
         document.body.classList.remove('modo-extrator-ativo');
         overlay.style.display = 'none';
 
-        const select = document.getElementById('extrator-topic-select');
-        select.innerHTML = '';
-        
         const activeTabId = (typeof TopicsManager !== 'undefined') ? TopicsManager.getActiveTabId() : null;
-        topicos.forEach(t => {
-            const opt = new Option(t.nome, t.id);
-            if (t.id === activeTabId) opt.selected = true;
-            select.appendChild(opt);
-        });
+        DropdownManager.renderizar('extrator-topic-select', topicos, activeTabId);
         
         document.getElementById('extrator-modal-backdrop').style.display = 'block';
         document.getElementById('extrator-wizard-popup').style.display = 'flex';
@@ -777,6 +909,32 @@ window.limparAreaInternaLGPD = function() {
     exibirToast('Área restrita limpa.', 'info');
 };
 
+/* --- MICRO-SERVIÇOS DA ÁREA DA MINUTA --- */
+window.limparMinutaAnterior = function() {
+    const textarea = document.getElementById('ctx-minuta-anterior');
+    if (textarea) {
+        textarea.value = '';
+        sessionStorage.removeItem('juris_ed_ctx_minuta');
+        exibirToast('Texto da minuta limpo.', 'info');
+    }
+};
+
+window.colarNaMinuta = async function() {
+    const textarea = document.getElementById('ctx-minuta-anterior');
+    if (!textarea) return;
+    
+    try {
+        const text = await navigator.clipboard.readText();
+        textarea.value = text;
+        window.salvarRascunhoContextoDebounced();
+        exibirToast('Texto colado com sucesso!', 'sucesso');
+    } catch (err) {
+        console.warn('Fallback ativado: Permissão de Clipboard bloqueada.');
+        textarea.focus();
+        exibirToast('Permissão bloqueada. Pressione Ctrl+V para colar.', 'aviso');
+    }
+};
+
 /* --- ATUALIZAÇÃO DO AUTO-SAVE COM INJEÇÃO DE HASH DO PROCESSO --- */
 window.salvarRascunhoContextoDebounced = _debounce(function() {
     try {
@@ -836,13 +994,33 @@ window.abrirModalGeradorContexto = async function() {
 
             for (const [docTipo, limites] of Object.entries(agrupados)) {
                 if (limites.inicio && limites.fim) {
-                    const textoBruto = await window.PdfEngine.extrairTextoPorRegiao(limites.inicio, limites.fim);
-                    const textoLimpo = window.JurisUtils.limparTextoPDF(textoBruto);
-                    
+                    const pInicio = Math.min(limites.inicio.pagina, limites.fim.pagina);
+                    const pFim = Math.max(limites.inicio.pagina, limites.fim.pagina);
+                    const amostrasMap = new Map();
+
+                    // EXTRAÇÃO COM COLETA DE AMOSTRAGEM (necessária para a camada automática de ruído)
+                    const textoBruto = await window.PdfEngine.extrairTextoPorRegiao(
+                        limites.inicio,
+                        limites.fim,
+                        null, // onProgress — não usado neste fluxo
+                        (pageNum, rawText) => {
+                            if (pageNum === pInicio + 1 || pageNum === pInicio + 2 || pageNum === pFim - 1) {
+                                amostrasMap.set(pageNum, rawText);
+                            }
+                        }
+                    );
+
+                    let textoLimpo = window.JurisUtils.limparTextoPDF(textoBruto);
+
+                    // DELEGAÇÃO INTEGRAL DA SANITIZAÇÃO (mesma função usada na exportação TXT)
+                    if (typeof window.ExportManager?.aplicarFiltrosAvancados === 'function') {
+                        textoLimpo = window.ExportManager.aplicarFiltrosAvancados(textoLimpo, docTipo, amostrasMap, pInicio, pFim);
+                    }
+
                     // GERAÇÃO DE XML PROFUNDO PARA A IA
                     const tagName = docTipo.toUpperCase();
                     const xml = `\n<${tagName}>\n${textoLimpo}\n</${tagName}>\n`;
-                    
+
                     if (docTipo === 'decisao') decisaoXML += xml;
                     else embargosXML += xml;
                 }
@@ -912,7 +1090,10 @@ window.gerarECopiarContexto = function(modo = 'pro') {
 
     const btnId = modo === 'interno' ? 'btn-copiar-contexto-interno' : 'btn-copiar-contexto-pro';
     const btn = document.getElementById(btnId);
-    const originalText = btn.innerHTML; // Preserva a estrutura original
+    
+    // Mutação Atômica - Apenas UMA declaração de originalText
+    const targetTextNode = btn.querySelector('.btn-main-text');
+    const originalText = targetTextNode.innerText;
     
     // Concatenação Inteligente
     let outputFinal = "";
@@ -947,17 +1128,17 @@ window.gerarECopiarContexto = function(modo = 'pro') {
         }
     }
 
-    // Feedback Visual Progressivo
-    btn.innerHTML = "<span style='font-weight: bold;'>⏳ Copiando...</span>";
+    // Feedback Visual Progressivo (Mutação Limpa sem Layout Shift)
+    targetTextNode.innerText = '⏳ Copiando...';
     btn.style.opacity = "0.8";
 
     if (!navigator.clipboard) {
-        executarCopiaFallback(outputFinal, btn, originalText, modo);
+        executarCopiaFallback(outputFinal, btn, targetTextNode, originalText, modo);
         return;
     }
 
     navigator.clipboard.writeText(outputFinal).then(() => {
-        btn.innerHTML = "<span style='font-weight: bold;'>✅ Sucesso!</span>";
+        targetTextNode.innerText = '✅ Sucesso!';
         btn.style.backgroundColor = "#2e7d32"; 
         btn.style.opacity = "1";
         
@@ -965,25 +1146,26 @@ window.gerarECopiarContexto = function(modo = 'pro') {
         exibirToast(msgToast, 'sucesso');
         
         setTimeout(() => {
-            btn.innerHTML = originalText;
+            targetTextNode.innerText = originalText;
             btn.style.backgroundColor = modo === 'interno' ? '#f57c00' : 'var(--trt-blue)';
-            fecharModalGeradorContexto();
+            if(typeof window.fecharModalGeradorContexto === 'function') window.fecharModalGeradorContexto();
         }, 1500); 
         
     }).catch(err => {
         console.error('Falha na Clipboard API:', err);
-        executarCopiaFallback(outputFinal, btn, originalText, modo);
+        executarCopiaFallback(outputFinal, btn, targetTextNode, originalText, modo);
     });
 };
 
-function executarCopiaFallback(texto, btn, originalText, modo) {
-    btn.innerHTML = "<span style='font-weight: bold;'>⚠️ Falha ao Copiar</span>";
+function executarCopiaFallback(texto, btn, targetTextNode, originalText, modo) {
+    targetTextNode.innerText = '⚠️ Falhou';
     btn.style.backgroundColor = "#d32f2f";
     btn.style.opacity = "1";
     exibirToast('Permissão negada. Copie manualmente (Ctrl+A, Ctrl+C).', 'erro');
     
+    // Retorna visual do botão após 3s, mas NÃO fecha o modal
     setTimeout(() => {
-        btn.innerHTML = originalText;
+        targetTextNode.innerText = originalText;
         btn.style.backgroundColor = modo === 'interno' ? '#f57c00' : 'var(--trt-blue)';
     }, 3000);
 }
