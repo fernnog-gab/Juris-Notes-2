@@ -226,11 +226,21 @@ body.modo-extrator-ativo #crop-overlay { display: block; cursor: crosshair; back
     flex-shrink: 0;
 }
 
-/* Redimensionamento e Proteção das Abas Principais (Processo/Anotações) */
+/* Expansão e Proteção das Abas Principais (Processo/Anotações) */
+.tabs-nav {
+    flex: 1; /* Garante que o contêiner das abas ocupe todo o espaço livre da barra */
+    display: flex;
+    gap: 4px;
+}
+
 .tabs-nav .tab-btn {
-    padding: 8px 12px;
-    font-size: 0.85rem;
-    max-width: 160px;
+    flex: 1; /* Faz as abas dividirem e preencherem o espaço disponível */
+    max-width: 320px; /* Trava de segurança para não ficarem distorcidas em monitores muito grandes (Ultrawide) */
+    padding: 10px 16px;
+    font-size: 0.95rem;
+    display: flex;
+    justify-content: center; /* Centraliza o texto e a tag amarela elegantemente */
+    align-items: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
