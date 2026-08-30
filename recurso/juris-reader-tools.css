@@ -231,12 +231,15 @@ body.modo-extrator-ativo #crop-overlay { display: block; cursor: crosshair; back
     flex: 1;
     display: flex;
     gap: 4px;
+    align-self: stretch; /* Garante que o bloco de abas encoste no teto e no piso do cabeçalho */
 }
 
 .tabs-nav .tab-btn {
     flex: 1;
-    max-width: none; /* Trava limitadora removida para ocupar 100% do espaço vazio */
-    padding: 10px 16px;
+    max-width: none; 
+    height: 100%; /* Força as abas a ocuparem 100% da altura disponível */
+    margin: 0;
+    padding: 0 16px; /* Padding vertical zerado: o Flexbox fará a centralização perfeita sozinho */
     font-size: 0.95rem;
     display: flex;
     justify-content: center;
