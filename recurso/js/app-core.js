@@ -426,7 +426,104 @@ window.ShortcutManager = (function() {
 
         // Editar: Shift + Clique ou abrir modal se estiver vazio
         if (state[type] === null || event.shiftKey) {
-            const paginaE
+            const paginaExistente = state[type] === null
+                ? ''
+                : (typeof state[type] === 'number' ? state[type] : state[type].page);
+            abrirModal(type, false, paginaExistente);
+        } else {
+            const targetPage = typeof state[type] === 'number' ? state[type] : state[type].page;
+            PdfEngine.goToPage(targetPage);
+        }
+    }
+
+    function abrirModal(type, customMode = false, suggestedPage = '') {
+        currentEditingType = type;
+        isCustomizing = customMode || (state[type] && state[type].isCustom);
+
+        const titleEl = document.getElementById('shortcut-modal-title');
+        if(titleEl) titleEl.textContent = isCustomizing ? 'Customizar Favorito - Página:' : `Página para: ${baseRotulos[type]}`;
+        
+        const inputEl = document.getElementById('shortcut-page-input');
+        if(inputEl) inputEl.value = suggestedPage;
+        
+        const customFields = document.getElementById('shortcut-custom-fields');
+        if(customFields) customFields.style.display = isCustomizing ? 'block' : 'none';
+        
+        if (isCustomizing && state[type] && state[type].isCustom) {
+            const labelInput = document.getElementById('shortcut-label-input');
+            if(labelInput) labelInput.value = state[type].label || '';
+            
+            const radio = document.querySelector(`input[name="shortcut_color"][value="${state[type].color}"]`);
+            if(radio) radio.checked = true;
+        } else {
+            const labelInput = document.getElementById('shortcut-label-input');
+            if(labelInput) labelInput.value = '';
+            const firstRadio = document.querySelector('input[name="shortcut_color"]');
+            if(firstRadio) firstRadio.checked = true;
+        }
+        
+        document.getElementById('shortcut-modal-backdrop').style.display = 'block';
+        document.getElementById('shortcut-modal').style.display = 'flex';
+        setTimeout(() => inputEl?.focus(), 50);
+    }
+
+    async function salvarModal() {
+        if (!currentEditingType) return;
+        const pageVal = document.getElementById('shortcut-page-input').value.trim();
+        const parsedPage = parseInt(pageVal, 10);
+        
+        if (pageVal === '') {
+            await _commitShortcut(currentEditingType, null);
+        } else if (!isNaN(parsedPage) && parsedPage > 0) {
+            let payload = { page: parsedPage };
+            
+            if (isCustomizing) {
+                const label = document.getElementById('shortcut-label-input').value.trim() || 'Favorito';
+                const colorRadio = document.querySelector('input[name="shortcut_color"]:checked');
+                const color = colorRadio ? colorRadio.value : 'fuchsia';
+                payload = { page: parsedPage, isCustom: true, label, color };
+            }
+            
+            await _commitShortcut(currentEditingType, payload);
+        } else {
+            exibirToast('Número de página inválido.', 'erro'); 
+            return;
+        }
+        fecharModal();
+    }
+    
+    function fecharModal() {
+        currentEditingType = null;
+        document.getElementById('shortcut-modal-backdrop').style.display = 'none';
+        document.getElementById('shortcut-modal').style.display = 'none';
+    }
+
+    function getFabId(type) {
+        const map = { 
+            favorito: 'fab-favorito', recursoAutora: 'fab-recurso-autora', 
+            recursoReu: 'fab-recurso-re', recursoReu2: 'fab-recurso-re2', 
+            contestacao: 'fab-contestacao', contestacaoRe2: 'fab-contestacao-re2', 
+            sentenca: 'fab-sentenca' 
+        };
+        return map[type];
+    }
+
+    return { 
+        init, handleClick, updateUI, fecharModal, salvarModal,
+        getState: () => state,
+        setState: (newState) => { if (newState) { state = { ...state, ...newState }; updateUI(); } },
+        reset: () => { 
+            state = { favorito: null, recursoAutora: null, recursoReu: null, recursoReu2: null, contestacao: null, contestacaoRe2: null, sentenca: null }; 
+            updateUI(); 
+        },
+        toggleVisibility: (show) => { 
+            Object.keys(state).forEach(type => {
+                const btn = document.getElementById(getFabId(type));
+                if (btn) btn.style.display = show ? 'flex' : 'none';
+            });
+        }
+    };
+})();
 
 /* ================================================
    INICIALIZAÇÃO E INJEÇÃO DE DEPENDÊNCIAS
