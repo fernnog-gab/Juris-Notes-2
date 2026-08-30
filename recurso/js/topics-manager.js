@@ -1119,7 +1119,6 @@ window.TopicsManager = (function () {
 
         if (!headerEl || !contentEl) return;
 
-        // Estado vazio: nenhum tópico criado ainda
         if (topicosArray.length === 0) {
             headerEl.innerHTML = '';
             contentEl.innerHTML = `
@@ -1132,20 +1131,16 @@ window.TopicsManager = (function () {
             return;
         }
 
-        // PURGA DE ESTADO: Limpa resíduos do estado vazio antes de re-renderizar
         contentEl.style.borderTop = '';
         contentEl.style.backgroundColor = '';
 
-        // Resiliência: garante que sempre há uma aba ativa válida
         if (!activeTabId || !topicosArray.some(t => t.id === activeTabId)) {
             activeTabId = topicosArray[0].id;
         }
 
-        // Cache do scroll atual antes da destruição
         const scrollAnterior = headerEl.scrollLeft;
         let abaAtivaNode = null;
 
-        // 1. Construir as abas do fichário
         headerEl.innerHTML = '';
         [...topicosArray].reverse().forEach(topico => {
             const isActive = topico.id === activeTabId;
@@ -1154,12 +1149,10 @@ window.TopicsManager = (function () {
             btn.className        = `topic-tab-btn ${isActive ? 'active' : ''}`;
             btn.title            = topico.nome; 
             
-            // Injeção puramente declarativa de variáveis CSS
             const corContraste = obterCorContraste(topico.cor);
             btn.style.setProperty('--tab-bg', topico.cor);
             btn.style.setProperty('--tab-color', corContraste);
 
-            // Encapsulamento de label para proteger o flexbox text-overflow
             const labelSpan = document.createElement('span');
             labelSpan.className = 'tab-label';
             labelSpan.textContent = topico.nome;
@@ -1175,14 +1168,12 @@ window.TopicsManager = (function () {
             if (isActive) abaAtivaNode = btn;
         });
 
-        // 2. Construir o conteúdo do tópico ativo
         const topicoAtivo = topicosArray.find(t => t.id === activeTabId);
         if (!topicoAtivo) return;
 
         _activeTopicoCor = topicoAtivo.cor;
         contentEl.style.setProperty('--active-tab-color', _activeTopicoCor);
 
-        // Restauração do estado de scroll após o paint do DOM
         requestAnimationFrame(() => {
             headerEl.scrollLeft = scrollAnterior;
             if (abaAtivaNode) {
@@ -1191,12 +1182,9 @@ window.TopicsManager = (function () {
         });
         const corTextoTese = obterCorContraste(_activeTopicoCor);
 
-        // NOVO: Painel Preâmbulo Estático gerado incondicionalmente
         const preambleHtml = `
             <div class="topic-preamble-panel">
                 <div class="preamble-card preamble-alegacao ${!topicoAtivo.alegacoes ? 'is-empty' : ''}" onclick="abrirEdicaoPreambulo('${activeTabId}', 'alegacoes')">
-                    
-                    <!-- NOVO: Gatilho da IA (Tratamento robusto contra quebras de linha e aspas no HTML) -->
                     <div class="preamble-icon ai-trigger-btn" 
                          title="✨ Inteligência Artificial: Buscar modelos compatíveis" 
                          onclick="event.stopPropagation(); AIRecommendationManager.buscarModelosCompativeis('${activeTabId}', decodeURIComponent('${encodeURIComponent(topicoAtivo.alegacoes || '').replace(/'/g, "%27")}'))">
@@ -1205,7 +1193,6 @@ window.TopicsManager = (function () {
                             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" class="ai-sparkle" style="display:none; transform-origin: 12px 12px;"></path>
                         </svg>
                     </div>
-
                     <div class="preamble-content">
                         <span class="preamble-title">Razões Recursais</span>
                         ${topicoAtivo.alegacoes ? renderizarMarkdownSeguro(escaparHTML(topicoAtivo.alegacoes)) : '<span class="preamble-empty">Clique para redigir as alegações recursais...</span>'}
@@ -1261,174 +1248,160 @@ window.TopicsManager = (function () {
         }
 
         let sumarioHtml = '';
-            const tesesValidas = topicoAtivo.anotacoes.filter(an => an.tese && an.tese.trim() !== '');
-            if (tesesValidas.length > 0) {
-                sumarioHtml = `
-                <div class="thesis-summary-panel">`;
+        const tesesValidas = topicoAtivo.anotacoes.filter(an => an.tese && an.tese.trim() !== '');
+        if (tesesValidas.length > 0) {
+            sumarioHtml = `
+            <div class="thesis-summary-panel">`;
 
-                topicoAtivo.anotacoes.forEach((an, idx) => {
-                    if (an.tese && an.tese.trim() !== '') {
-                        const fasesPresentes = new Set();
+            topicoAtivo.anotacoes.forEach((an, idx) => {
+                if (an.tese && an.tese.trim() !== '') {
+                    const fasesPresentes = new Set();
+                    
+                    fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(an.documento) : 4);
+                    
+                    if (an.itensCorrelacionados?.length) {
+                        an.itensCorrelacionados.forEach(ic => fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4));
+                    }
+
+                    if (an.itensCorrelacionados?.length) {
+                        an.itensCorrelacionados.forEach(ic => {
+                            if (ic.subAnotacoes && ic.subAnotacoes.length > 0) {
+                                fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4);
+                            }
+                        });
+                    }
+
+                    const cores = [];
+                    if(fasesPresentes.has(1)) cores.push('var(--fase-1-bg)');
+                    if(fasesPresentes.has(2)) cores.push('var(--fase-2-bg)');
+                    if(fasesPresentes.has(3)) cores.push('var(--fase-3-bg)');
+                    if(fasesPresentes.has(4)) cores.push('var(--fase-4-bg)');
+                    
+                    let bgStyle = '';
+                    if(cores.length > 0) {
+                        const step = 100 / cores.length;
+                        const gradients = cores.map((cor, i) => `${cor} ${i * step}%, ${cor} ${(i + 1) * step}%`);
+                        bgStyle = `style="background: linear-gradient(to right, ${gradients.join(', ')}), #ffffff;"`; 
+                    }
+
+                    const matureClass = fasesPresentes.size === 4 ? 'mature' : '';
+                    const txt = escaparHTML(an.tese);
+
+                    sumarioHtml += `
+                        <div class="thesis-badge ${matureClass}" onclick="abrirModalTese('${activeTabId}', ${idx})">
+                            <div class="thesis-badge-inner" ${bgStyle}>
+                                <span class="num" style="background-color: ${_activeTopicoCor}; color: ${corTextoTese};">${idx + 1}</span> 
+                                <span class="texto-tese">${txt}</span>
+                            </div>
+                        </div>`;
+                }
+            });
+            sumarioHtml += '</div>';
+        }
+        
+        let cardsHTML = '';
+        let ultimaTeseRenderizada = null;
+
+        const renderContext = {
+            romanCounter: 0,
+            romanMap: new Map()
+        };
+
+        topicoAtivo.anotacoes.forEach((an, index) => {
+            const chaveTeseCrua = an.tese || "Tese Não Nomeada";
+            const diretrizes = (topicoAtivo.diretrizesPorTese && topicoAtivo.diretrizesPorTese[chaveTeseCrua]) 
+                                ? topicoAtivo.diretrizesPorTese[chaveTeseCrua] 
+                                : [];
+            
+            const isTesePreenchida = (an.tese && an.tese.trim() !== '');
+
+            if (chaveTeseCrua !== ultimaTeseRenderizada) {
+                if (isTesePreenchida || diretrizes.length > 0) {
+                    const tituloExibicao = isTesePreenchida ? an.tese : "Tese Não Nomeada";
+                    cardsHTML += _gerarHtmlTeseGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index, renderContext);
+                }
+                ultimaTeseRenderizada = chaveTeseCrua;
+            }
+            
+            cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
+        });
+
+        let htmlDiretrizesGlobais = '';
+        let globaisHtml = ''; 
+
+        if (temGlobais || forcadoAberto) {
+            if (temGlobais) {
+                const gruposGProcessados = new Set();
+                const globaisArray = [];
+
+                topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
+                    const dRender = { ...d, viewSource: 'global' };
+
+                    if (!dRender.grupoId) {
+                        const intencao = dRender.intencao || 'premissa';
+                        const iconSVG = obterIconeIntencao(intencao);
+                        const isRevisada = dRender.revisada === true;
+                        const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
                         
-                        fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(an.documento) : 4);
-                        
-                        if (an.itensCorrelacionados?.length) {
-                            an.itensCorrelacionados.forEach(ic => fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4));
+                        globaisArray.push(`
+                        <div class="${itemWrapperClass}" data-source="global">
+                            <div class="sub-annotation-card borda-global">
+                                <div class="sub-badge has-intent intencao-${intencao}" onclick="abrirMenuSubAnotacao('${activeTabId}', null, 'global', ${sIdx}, event)">${iconSVG} G.${sIdx + 1}</div>
+                                <div class="sub-text-content" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(dRender.texto))}</div>
+                                <div class="btn-read-mode-trigger sub-read-badge" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" onclick="TopicsManager.abrirModoLeitura(this)"><svg><use href="#icon-book-open"></use></svg></div>
+                                <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(dRender.texto).replace(/'/g, "\\'")}')" title="Copiar">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                    Copiar
+                                </button>
+                                ${_gerarBtnRevisaoHtml(activeTabId, null, 'global', sIdx, intencao, isRevisada)}
+                            </div>
+                        </div>`);
+                    } else {
+                        if (!gruposGProcessados.has(dRender.grupoId)) {
+                            gruposGProcessados.add(dRender.grupoId);
+                            globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
                         }
-
-                        if (an.itensCorrelacionados?.length) {
-                            an.itensCorrelacionados.forEach(ic => {
-                                if (ic.subAnotacoes && ic.subAnotacoes.length > 0) {
-                                    fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4);
-                                }
-                            });
-                        }
-
-                        const cores = [];
-                        if(fasesPresentes.has(1)) cores.push('var(--fase-1-bg)');
-                        if(fasesPresentes.has(2)) cores.push('var(--fase-2-bg)');
-                        if(fasesPresentes.has(3)) cores.push('var(--fase-3-bg)');
-                        if(fasesPresentes.has(4)) cores.push('var(--fase-4-bg)');
-                        
-                        let bgStyle = '';
-                        if(cores.length > 0) {
-                            const step = 100 / cores.length;
-                            const gradients = cores.map((cor, i) => `${cor} ${i * step}%, ${cor} ${(i + 1) * step}%`);
-                            bgStyle = `style="background: linear-gradient(to right, ${gradients.join(', ')}), #ffffff;"`; 
-                        }
-
-                        const matureClass = fasesPresentes.size === 4 ? 'mature' : '';
-                        const txt = escaparHTML(an.tese);
-
-                        sumarioHtml += `
-                            <div class="thesis-badge ${matureClass}" onclick="abrirModalTese('${activeTabId}', ${idx})">
-                                <div class="thesis-badge-inner" ${bgStyle}>
-                                    <span class="num" style="background-color: ${_activeTopicoCor}; color: ${corTextoTese};">${idx + 1}</span> 
-                                    <span class="texto-tese">${txt}</span>
-                                </div>
-                            </div>`;
                     }
                 });
-                sumarioHtml += '</div>';
+                globaisHtml = globaisArray.join('');
             }
-            
-            // Loop customizado com injeção condicional do Painel de Tese
-            let cardsHTML = '';
-            let ultimaTeseRenderizada = null;
 
-            // Injeta o contexto de renderização isolado para a aba
-            const renderContext = {
-                romanCounter: 0,
-                romanMap: new Map() // Mapeia grupoId -> Numeral Romano
-            };
-
-            topicoAtivo.anotacoes.forEach((an, index) => {
-                // 1. Busca os dados de forma segura (preserva notas já criadas)
-                const chaveTeseCrua = an.tese || "Tese Não Nomeada";
-                const diretrizes = (topicoAtivo.diretrizesPorTese && topicoAtivo.diretrizesPorTese[chaveTeseCrua]) 
-                                    ? topicoAtivo.diretrizesPorTese[chaveTeseCrua] 
-                                    : [];
-                
-                // 2. Verifica se o usuário de fato escreveu uma tese
-                const isTesePreenchida = (an.tese && an.tese.trim() !== '');
-
-                // 3. Se houver quebra de grupo (novo grupo de provas)
-                if (chaveTeseCrua !== ultimaTeseRenderizada) {
-                    
-                    // 4. Ocultação Segura: Só desenha o card se a tese tiver nome OU se houver notas salvas nela
-                    if (isTesePreenchida || diretrizes.length > 0) {
-                        const tituloExibicao = isTesePreenchida ? an.tese : "Tese Não Nomeada";
-                        cardsHTML += _gerarHtmlTeseGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index, renderContext);
-                    }
-                    
-                    // Atualiza a referência do agrupamento atual
-                    ultimaTeseRenderizada = chaveTeseCrua;
-                }
-                
-                // Desenha o card da prova e o número colorido exatamente como antes (Intocado)
-                cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
-            });
-            
-            // --- RENDERIZAÇÃO: DIRETRIZES GLOBAIS (CONDICIONAL) ---
-            let htmlDiretrizesGlobais = '';
-            let globaisHtml = ''; 
-
-            if (temGlobais || forcadoAberto) {
-                if (temGlobais) {
-                    const gruposGProcessados = new Set();
-                    const globaisArray = [];
-
-                    topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
-                        const dRender = { ...d, viewSource: 'global' };
-
-                        if (!dRender.grupoId) {
-                            const intencao = dRender.intencao || 'premissa';
-                            const iconSVG = obterIconeIntencao(intencao);
-                            const isRevisada = dRender.revisada === true;
-                            const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
-                            
-                            globaisArray.push(`
-                            <div class="${itemWrapperClass}" data-source="global">
-                                <div class="sub-annotation-card borda-global">
-                                    <div class="sub-badge has-intent intencao-${intencao}" onclick="abrirMenuSubAnotacao('${activeTabId}', null, 'global', ${sIdx}, event)">${iconSVG} G.${sIdx + 1}</div>
-                                    <div class="sub-text-content" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(dRender.texto))}</div>
-                                    <div class="btn-read-mode-trigger sub-read-badge" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" onclick="TopicsManager.abrirModoLeitura(this)"><svg><use href="#icon-book-open"></use></svg></div>
-                                    <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(dRender.texto).replace(/'/g, "\\'")}')" title="Copiar">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                        Copiar
+            htmlDiretrizesGlobais = `
+            <div class="timeline-item-master align-left nivel-hierarquico nivel-global">
+                <div class="main-card-wrapper">
+                    <div class="annotation-number-area">
+                        <div class="timeline-icon-box" title="Diretrizes Globais do Tópico">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                        </div>
+                    </div>
+                    <div class="annotation-card">
+                            <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
+                                <div class="hierarquia-titulo">Diretrizes Globais do Tópico</div>
+                                <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
+                                    <button title="Adicionar Diretriz Global" onclick="adicionarDiretrizEstrutural('global', '${activeTabId}', null, event)">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                                     </button>
-                                    ${_gerarBtnRevisaoHtml(activeTabId, null, 'global', sIdx, intencao, isRevisada)}
                                 </div>
-                            </div>`);
-                        } else {
-                            if (!gruposGProcessados.has(dRender.grupoId)) {
-                                gruposGProcessados.add(dRender.grupoId);
-                                globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
-                            }
-                        }
-                    });
-                    globaisHtml = globaisArray.join('');
-                }
-
-                htmlDiretrizesGlobais = `
-                <div class="timeline-item-master align-left nivel-hierarquico nivel-global">
-                    <div class="main-card-wrapper">
-                        <div class="annotation-number-area">
-                            <div class="timeline-icon-box" title="Diretrizes Globais do Tópico">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
                             </div>
                         </div>
-                        <div class="annotation-card">
-                                <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
-                                    <div class="hierarquia-titulo">Diretrizes Globais do Tópico</div>
-                                    <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
-                                        <button title="Adicionar Diretriz Global" onclick="adicionarDiretrizEstrutural('global', '${activeTabId}', null, event)">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                    </div>
-                    <div class="sub-annotations-wrapper" style="position: relative; min-height: auto;">
-                        ${globaisHtml}
-                    </div>
-                </div>`;
-            }
-
-            conteudoCentralHtml = sumarioHtml + `
-                <div class="timeline-container" id="timeline-container">
-                    <svg id="connections-canvas"></svg>
-                    ${htmlDiretrizesGlobais}
-                    ${cardsHTML}
-                </div>`;
+                </div>
+                <div class="sub-annotations-wrapper" style="position: relative; min-height: auto;">
+                    ${globaisHtml}
+                </div>
+            </div>`;
         }
+
+        conteudoCentralHtml = sumarioHtml + `
+            <div class="timeline-container" id="timeline-container">
+                <svg id="connections-canvas"></svg>
+                ${htmlDiretrizesGlobais}
+                ${cardsHTML}
+            </div>`;
 
         const novoHtml = preambleHtml + conteudoCentralHtml;
             
-        // Desconecta o observer antes da árvore antiga ser destruída (Prevenção de Memory Leak)
         if (typeof resizeObserver !== 'undefined') resizeObserver.disconnect();
 
-        // KEYED MORPHING
         if (typeof morphdom !== 'undefined') {
             morphdom(contentEl, `<div id="topics-tab-content" class="topics-content-area" style="${contentEl.style.cssText}">${novoHtml}</div>`, {
                 childrenOnly: true,
@@ -1441,7 +1414,6 @@ window.TopicsManager = (function () {
         }
             
         requestAnimationFrame(() => {
-            // 1. Observer unificado: vigia as mudanças dimensionais de ambos os tipos de cards
             document.querySelectorAll('.sub-text-content, .card-texto').forEach(el => {
                 if (typeof resizeObserver !== 'undefined') resizeObserver.observe(el);
                 
@@ -1457,7 +1429,7 @@ window.TopicsManager = (function () {
             });
 
             const historyContainer = document.getElementById('history-container');
-                if (historyContainer && typeof resizeObserver !== 'undefined') resizeObserver.observe(historyContainer);
+            if (historyContainer && typeof resizeObserver !== 'undefined') resizeObserver.observe(historyContainer);
             
             if (headerEl && typeof resizeObserver !== 'undefined') resizeObserver.observe(headerEl);
 
@@ -1476,8 +1448,6 @@ window.TopicsManager = (function () {
             
             _atualizarMarcadoresDeIdeia(topicoAtivo);
             atualizarContadorNotasOcultas();
-            
-            // _ajustarAbasFantasmas(); // Desativado - Scroll horizontal nativo
         });
         
         _sincronizarBtnGlobais(temGlobais, forcadoAberto);
