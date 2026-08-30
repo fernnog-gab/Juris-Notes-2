@@ -244,7 +244,7 @@ window.toggleLoginMenu = function(event) {
 };
 
 /* ================================================
-   MÓDULO DE ATALHOS FLUTUANTES (SHORTCUT MANAGER V2 - SMART FABS)
+   MÓDULO DE ATALHOS FLUTUANTES (SHORTCUT MANAGER V2.1 - SMART FABS REVISED)
    ================================================ */
 window.ShortcutManager = (function() {
     // Estado Rico: Suporta objetos { page, isCustom, label, color }
@@ -254,6 +254,7 @@ window.ShortcutManager = (function() {
     };
     let currentEditingType = null;
     let isCustomizing = false;
+    let hoveredType = null; // Controle de hover nativo
     
     // IconRegistry: Blindagem contra State Leak (Perda de ícones no Reload)
     const originalIcons = {};
@@ -274,12 +275,76 @@ window.ShortcutManager = (function() {
     const STAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
 
     function init() {
-        // Cacheia os ícones originais do HTML na inicialização
         Object.keys(state).forEach(type => {
             const btn = document.getElementById(getFabId(type));
-            if (btn && !originalIcons[type]) originalIcons[type] = btn.innerHTML;
+            if (btn && !originalIcons[type]) {
+                originalIcons[type] = btn.innerHTML;
+            }
         });
+        
+        bindSmartFabEvents();
         updateUI();
+    }
+    
+    function getTypeFromFabId(id) {
+        const map = {
+            favorito: 'fab-favorito', recursoAutora: 'fab-recurso-autora',
+            recursoReu: 'fab-recurso-re', recursoReu2: 'fab-recurso-re2',
+            contestacao: 'fab-contestacao', contestacaoRe2: 'fab-contestacao-re2',
+            sentenca: 'fab-sentenca'
+        };
+        return Object.keys(map).find(type => map[type] === id) || null;
+    }
+    
+    function bindSmartFabEvents() {
+        Object.keys(state).forEach(type => {
+            const btn = document.getElementById(getFabId(type));
+            if (!btn) return;
+
+            // Controle de hover para permitir Ctrl+Shift+K
+            btn.addEventListener('mouseenter', () => { hoveredType = type; });
+            btn.addEventListener('mouseleave', () => { if (hoveredType === type) hoveredType = null; });
+
+            // Botão direito abre customização
+            btn.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                abrirCustomizacao(type);
+            });
+        });
+
+        // Atalho de teclado puro: Ctrl + Shift + K
+        document.addEventListener('keydown', (event) => {
+            if (!event.ctrlKey || !event.shiftKey || event.code !== 'KeyK') return;
+
+            // Não interfere quando o usuário estiver digitando em campos
+            const activeEl = document.activeElement;
+            if (activeEl && (
+                activeEl.tagName === 'INPUT' ||
+                activeEl.tagName === 'TEXTAREA' ||
+                activeEl.tagName === 'SELECT' ||
+                activeEl.isContentEditable
+            )) { return; }
+
+            // Ignora se o próprio modal de atalho já estiver aberto
+            const modal = document.getElementById('shortcut-modal');
+            if (modal && modal.style.display === 'flex') return;
+
+            // Prioridade: botão com hover; depois, botão com foco
+            let targetType = hoveredType;
+            if (!targetType && activeEl && activeEl.classList.contains('fab-shortcut')) {
+                targetType = getTypeFromFabId(activeEl.id);
+            }
+
+            if (!targetType) {
+                exibirToast('Passe o mouse sobre o botão que deseja customizar.', 'aviso');
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            abrirCustomizacao(targetType);
+        });
     }
 
     async function _commitShortcut(type, payload) {
@@ -296,21 +361,21 @@ window.ShortcutManager = (function() {
             const btn = document.getElementById(getFabId(type));
             if (!btn) return;
             
-            // Fallback de segurança caso init() não tenha capturado o ícone
             if (!originalIcons[type]) originalIcons[type] = btn.innerHTML;
 
-            // Limpeza de estado e tooltips
             btn.className = 'fab-btn fab-shortcut'; 
             btn.removeAttribute('data-tooltip');
-            btn.title = ''; // Força remoção do tooltip nativo do navegador
+            btn.title = ''; 
             
             const data = state[type];
-            // Retrocompatibilidade: Converte números legados em objetos dinamicamente
             const config = (typeof data === 'number') ? { page: data } : data;
 
             if (!config || !config.page) {
                 btn.classList.add('is-empty');
-                btn.setAttribute('data-tooltip', `Marcar: ${baseRotulos[type]}\n[Ctrl+Clique] Capturar\n[Alt+Shift+Clique] Customizar`);
+                btn.setAttribute(
+                    'data-tooltip', 
+                    `${baseRotulos[type]} — sem página\n[Ctrl+Clique] Capturar página atual\n[Botão direito] ou [Ctrl+Shift+K] Customizar`
+                );
                 btn.innerHTML = originalIcons[type];
             } else {
                 const isCustom = config.isCustom;
@@ -318,12 +383,27 @@ window.ShortcutManager = (function() {
                 const rotulo = isCustom ? (config.label || 'Favorito') : baseRotulos[type];
 
                 btn.classList.add(corClass);
-                btn.setAttribute('data-tooltip', `⭐ ${rotulo} (fl. ${config.page})\n[Shift+Clique] Editar`);
-                
-                // Injeção do Ícone de Estrela ou Restauração do Original
+                btn.setAttribute(
+                    'data-tooltip', 
+                    `⭐ ${rotulo} (fl. ${config.page})\n[Shift+Clique] Editar\n[Botão direito] ou [Ctrl+Shift+K] Customizar/Remover`
+                );
                 btn.innerHTML = isCustom ? STAR_SVG : originalIcons[type];
             }
         });
+    }
+    
+    function abrirCustomizacao(type) {
+        if (!window.PdfEngine || !PdfEngine.getPdfDoc()) {
+            exibirToast('Carregue um documento primeiro.', 'aviso');
+            return;
+        }
+        const currentPage = PdfEngine.getCurrentPage();
+        const dadoAtual = state[type];
+        const paginaAtualDoAtalho = dadoAtual === null || dadoAtual === undefined
+            ? currentPage
+            : (typeof dadoAtual === 'number' ? dadoAtual : dadoAtual.page);
+
+        abrirModal(type, true, paginaAtualDoAtalho || currentPage);
     }
 
     async function handleClick(type, event) {
@@ -334,119 +414,19 @@ window.ShortcutManager = (function() {
 
         const currentPage = PdfEngine.getCurrentPage();
 
-        // 1. ATALHO: Customizar Favorito (Alt + Shift + Clique)
-        if (event.altKey && event.shiftKey) {
-            event.preventDefault(); 
-            event.stopPropagation();
-            abrirModal(type, true, currentPage);
-            return;
-        }
-
-        // 2. ATALHO: Captura Rápida Padrão (Ctrl + Clique)
+        // Captura rápida: Ctrl + Clique
         if (event.ctrlKey && !event.shiftKey && !event.altKey) {
             event.preventDefault(); 
             event.stopPropagation();
-            if (currentPage > 0) await _commitShortcut(type, { page: currentPage });
+            if (currentPage > 0) {
+                await _commitShortcut(type, { page: currentPage });
+            }
             return; 
         }
 
-        // 3. FLUXO: Editar (Shift + Clique) ou Navegar (Clique Simples)
+        // Editar: Shift + Clique ou abrir modal se estiver vazio
         if (state[type] === null || event.shiftKey) {
-            abrirModal(type, false, state[type] ? (state[type].page || state[type]) : '');
-        } else {
-            const targetPage = state[type].page || state[type];
-            PdfEngine.goToPage(targetPage);
-        }
-    }
-
-    function abrirModal(type, customMode = false, suggestedPage = '') {
-        currentEditingType = type;
-        isCustomizing = customMode || (state[type] && state[type].isCustom);
-
-        const titleEl = document.getElementById('shortcut-modal-title');
-        if(titleEl) titleEl.textContent = isCustomizing ? 'Customizar Favorito - Página:' : `Página para: ${baseRotulos[type]}`;
-        
-        const inputEl = document.getElementById('shortcut-page-input');
-        if(inputEl) inputEl.value = suggestedPage;
-        
-        const customFields = document.getElementById('shortcut-custom-fields');
-        if(customFields) customFields.style.display = isCustomizing ? 'block' : 'none';
-        
-        if (isCustomizing && state[type] && state[type].isCustom) {
-            const labelInput = document.getElementById('shortcut-label-input');
-            if(labelInput) labelInput.value = state[type].label || '';
-            
-            const radio = document.querySelector(`input[name="shortcut_color"][value="${state[type].color}"]`);
-            if(radio) radio.checked = true;
-        } else {
-            const labelInput = document.getElementById('shortcut-label-input');
-            if(labelInput) labelInput.value = '';
-            const firstRadio = document.querySelector('input[name="shortcut_color"]');
-            if(firstRadio) firstRadio.checked = true;
-        }
-        
-        document.getElementById('shortcut-modal-backdrop').style.display = 'block';
-        document.getElementById('shortcut-modal').style.display = 'flex';
-        setTimeout(() => inputEl?.focus(), 50);
-    }
-
-    async function salvarModal() {
-        if (!currentEditingType) return;
-        const pageVal = document.getElementById('shortcut-page-input').value.trim();
-        const parsedPage = parseInt(pageVal, 10);
-        
-        if (pageVal === '') {
-            await _commitShortcut(currentEditingType, null);
-        } else if (!isNaN(parsedPage) && parsedPage > 0) {
-            let payload = { page: parsedPage };
-            
-            if (isCustomizing) {
-                const label = document.getElementById('shortcut-label-input').value.trim() || 'Favorito';
-                const colorRadio = document.querySelector('input[name="shortcut_color"]:checked');
-                const color = colorRadio ? colorRadio.value : 'fuchsia';
-                payload = { page: parsedPage, isCustom: true, label, color };
-            }
-            
-            await _commitShortcut(currentEditingType, payload);
-        } else {
-            exibirToast('Número de página inválido.', 'erro'); 
-            return;
-        }
-        fecharModal();
-    }
-    
-    function fecharModal() {
-        currentEditingType = null;
-        document.getElementById('shortcut-modal-backdrop').style.display = 'none';
-        document.getElementById('shortcut-modal').style.display = 'none';
-    }
-
-    function getFabId(type) {
-        const map = { 
-            favorito: 'fab-favorito', recursoAutora: 'fab-recurso-autora', 
-            recursoReu: 'fab-recurso-re', recursoReu2: 'fab-recurso-re2', 
-            contestacao: 'fab-contestacao', contestacaoRe2: 'fab-contestacao-re2', 
-            sentenca: 'fab-sentenca' 
-        };
-        return map[type];
-    }
-
-    return { 
-        init, handleClick, updateUI, fecharModal, salvarModal,
-        getState: () => state,
-        setState: (newState) => { if (newState) { state = { ...state, ...newState }; updateUI(); } },
-        reset: () => { 
-            state = { favorito: null, recursoAutora: null, recursoReu: null, recursoReu2: null, contestacao: null, contestacaoRe2: null, sentenca: null }; 
-            updateUI(); 
-        },
-        toggleVisibility: (show) => { 
-            Object.keys(state).forEach(type => {
-                const btn = document.getElementById(getFabId(type));
-                if (btn) btn.style.display = show ? 'flex' : 'none';
-            });
-        }
-    };
-})();
+            const paginaE
 
 /* ================================================
    INICIALIZAÇÃO E INJEÇÃO DE DEPENDÊNCIAS
