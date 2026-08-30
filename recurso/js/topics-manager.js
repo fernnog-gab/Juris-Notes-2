@@ -9,6 +9,68 @@ window.TopicsManager = (function () {
     function obterRomano(idx) { return romanoCache[idx] || String(idx + 1); }
 
     let _activeTopicoCor = '#ffffff';
+    const _topicosComGlobaisAbertas = new Set();
+
+    // OTIMIZAÇÃO DE MEMÓRIA: Função Içada (Prevenção de GC Thrashing)
+    function _sincronizarBtnGlobais(temDados, aberto) {
+        const btn = document.getElementById('btn-toggle-globais');
+        if (!btn) return;
+        
+        const isAtivo = temDados || aberto;
+        btn.classList.toggle('is-active', isAtivo);
+        btn.setAttribute('aria-pressed', isAtivo ? 'true' : 'false');
+        
+        if (temDados) {
+            btn.title = "Diretrizes Globais estão em uso (Trancado)";
+        } else if (aberto) {
+            btn.title = "Ocultar Diretrizes Globais (Vazio)";
+        } else {
+            btn.title = "Ativar Card de Diretrizes Globais";
+        }
+    }
+
+    function toggleDiretrizesGlobais() {
+        const activeId = activeTabId;
+        if (!activeId) return;
+        const topico = topicos.find(t => t.id === activeId);
+        if (!topico) return;
+
+        const temDiretrizes = topico.diretrizesGlobais && topico.diretrizesGlobais.length > 0;
+        
+        if (temDiretrizes) {
+            if(window.exibirToast) exibirToast('Não é possível ocultar: existem diretrizes cadastradas. Remova-as primeiro.', 'aviso');
+            return;
+        }
+
+        const ativando = !_topicosComGlobaisAbertas.has(activeId);
+        
+        if (ativando) {
+            _topicosComGlobaisAbertas.add(activeId);
+        } else {
+            _topicosComGlobaisAbertas.delete(activeId);
+        }
+        
+        renderizarFichario(topicos); 
+
+        if (ativando) {
+            requestAnimationFrame(() => {
+                const globalCard = document.querySelector('.nivel-global .annotation-card');
+                if (globalCard) {
+                    const scrollContainer = document.getElementById('history-container');
+                    const offset = (globalCard.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top) + scrollContainer.scrollTop - 40;
+                    scrollContainer.scrollTo({ top: offset, behavior: 'smooth' });
+                    
+                    globalCard.classList.remove('card-flash-focus');
+                    void globalCard.offsetWidth;
+                    globalCard.classList.add('card-flash-focus');
+                }
+            });
+        }
+    }
+    
+    function resetVisibilidadeGlobais() {
+        _topicosComGlobaisAbertas.clear();
+    }
 
     /* ================================================
        OBSERVER DE LAYOUT OTIMIZADO (ANTI-THRASING)
@@ -1171,13 +1233,34 @@ window.TopicsManager = (function () {
 
         let conteudoCentralHtml = '';
 
-        if (topicoAtivo.anotacoes.length === 0) {
+        const temAnotacoes = topicoAtivo.anotacoes && topicoAtivo.anotacoes.length > 0;
+        const temGlobais = topicoAtivo.diretrizesGlobais && topicoAtivo.diretrizesGlobais.length > 0;
+        const forcadoAberto = _topicosComGlobaisAbertas.has(activeTabId);
+
+        if (!temAnotacoes && !temGlobais && !forcadoAberto) {
             conteudoCentralHtml = `
                 <p class="empty-state" style="margin-top: 20px;">
-                    A Matriz Dialética está vazia. Adicione extrações das provas.
+                    A Matriz Dialética está vazia. Adicione extrações das provas ou clique no Globo no cabeçalho para inserir Diretrizes Globais.
                 </p>`;
-        } else {
-            let sumarioHtml = '';
+            const novoHtml = preambleHtml + conteudoCentralHtml;
+            
+            if (typeof resizeObserver !== 'undefined') resizeObserver.disconnect();
+            if (typeof morphdom !== 'undefined') {
+                morphdom(contentEl, `<div id="topics-tab-content" class="topics-content-area" style="${contentEl.style.cssText}">${novoHtml}</div>`, {
+                    childrenOnly: true,
+                    getNodeKey: function(node) {
+                        if (node.id) return node.id;
+                    }
+                });
+            } else {
+                contentEl.innerHTML = novoHtml;
+            }
+            
+            _sincronizarBtnGlobais(false, false);
+            return;
+        }
+
+        let sumarioHtml = '';
             const tesesValidas = topicoAtivo.anotacoes.filter(an => an.tese && an.tese.trim() !== '');
             if (tesesValidas.length > 0) {
                 sumarioHtml = `
@@ -1266,72 +1349,71 @@ window.TopicsManager = (function () {
                 cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
             });
             
-            // --- RENDERIZAÇÃO: DIRETRIZES GLOBAIS (INCONDICIONAL) ---
+            // --- RENDERIZAÇÃO: DIRETRIZES GLOBAIS (CONDICIONAL) ---
             let htmlDiretrizesGlobais = '';
-            let globaisHtml = ''; // Guarda os nós de ideia, se existirem
+            let globaisHtml = ''; 
 
-            // Se existirem diretrizes, monta os nós de ideia
-            if (topicoAtivo.diretrizesGlobais && topicoAtivo.diretrizesGlobais.length > 0) {
-                const gruposGProcessados = new Set();
-                const globaisArray = [];
+            if (temGlobais || forcadoAberto) {
+                if (temGlobais) {
+                    const gruposGProcessados = new Set();
+                    const globaisArray = [];
 
-                topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
-                    // CÓPIA SUPERFICIAL: Previne mutação do JSON original
-                    const dRender = { ...d, viewSource: 'global' };
+                    topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
+                        const dRender = { ...d, viewSource: 'global' };
 
-                    if (!dRender.grupoId) {
-                        const intencao = dRender.intencao || 'premissa';
-                        const iconSVG = obterIconeIntencao(intencao);
-                        const isRevisada = dRender.revisada === true;
-                        const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
-                        
-                        globaisArray.push(`
-                        <div class="${itemWrapperClass}" data-source="global">
-                            <div class="sub-annotation-card borda-global">
-                                <div class="sub-badge has-intent intencao-${intencao}" onclick="abrirMenuSubAnotacao('${activeTabId}', null, 'global', ${sIdx}, event)">${iconSVG} G.${sIdx + 1}</div>
-                                <div class="sub-text-content" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(dRender.texto))}</div>
-                                <div class="btn-read-mode-trigger sub-read-badge" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" onclick="TopicsManager.abrirModoLeitura(this)"><svg><use href="#icon-book-open"></use></svg></div>
-                                <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(dRender.texto).replace(/'/g, "\\'")}')" title="Copiar">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                    Copiar
-                                </button>
-                                ${_gerarBtnRevisaoHtml(activeTabId, null, 'global', sIdx, intencao, isRevisada)}
-                            </div>
-                        </div>`);
-                    } else {
-                        if (!gruposGProcessados.has(dRender.grupoId)) {
-                            gruposGProcessados.add(dRender.grupoId);
-                            globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
-                        }
-                    }
-                });
-                globaisHtml = globaisArray.join('');
-            }
-
-            // O CARD MESTRE É RENDERIZADO SEMPRE (Mesmo sem nós de ideia)
-            htmlDiretrizesGlobais = `
-            <div class="timeline-item-master align-left nivel-hierarquico nivel-global">
-                <div class="main-card-wrapper">
-                    <div class="annotation-number-area">
-                        <div class="timeline-icon-box" title="Diretrizes Globais do Tópico">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                        </div>
-                    </div>
-                    <div class="annotation-card">
-                            <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
-                                <div class="hierarquia-titulo">Diretrizes Globais do Tópico</div>
-                                <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
-                                    <button title="Adicionar Diretriz Global" onclick="adicionarDiretrizEstrutural('global', '${activeTabId}', null, event)">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        if (!dRender.grupoId) {
+                            const intencao = dRender.intencao || 'premissa';
+                            const iconSVG = obterIconeIntencao(intencao);
+                            const isRevisada = dRender.revisada === true;
+                            const itemWrapperClass = intencao === 'nota' ? `sub-annotation-item is-nota-interna ${isRevisada ? 'is-revisada' : 'is-pendente'}` : 'sub-annotation-item';
+                            
+                            globaisArray.push(`
+                            <div class="${itemWrapperClass}" data-source="global">
+                                <div class="sub-annotation-card borda-global">
+                                    <div class="sub-badge has-intent intencao-${intencao}" onclick="abrirMenuSubAnotacao('${activeTabId}', null, 'global', ${sIdx}, event)">${iconSVG} G.${sIdx + 1}</div>
+                                    <div class="sub-text-content" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" ondblclick="TopicsManager.abrirModoLeitura(this)">${renderizarMarkdownSeguro(escaparHTML(dRender.texto))}</div>
+                                    <div class="btn-read-mode-trigger sub-read-badge" data-raw-text="${escaparHTML(dRender.texto)}" data-raw-title="Diretriz Global" onclick="TopicsManager.abrirModoLeitura(this)"><svg><use href="#icon-book-open"></use></svg></div>
+                                    <button class="btn-copiar-zen" onclick="navigator.clipboard.writeText('${escaparHTML(dRender.texto).replace(/'/g, "\\'")}')" title="Copiar">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                        Copiar
                                     </button>
+                                    ${_gerarBtnRevisaoHtml(activeTabId, null, 'global', sIdx, intencao, isRevisada)}
+                                </div>
+                            </div>`);
+                        } else {
+                            if (!gruposGProcessados.has(dRender.grupoId)) {
+                                gruposGProcessados.add(dRender.grupoId);
+                                globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
+                            }
+                        }
+                    });
+                    globaisHtml = globaisArray.join('');
+                }
+
+                htmlDiretrizesGlobais = `
+                <div class="timeline-item-master align-left nivel-hierarquico nivel-global">
+                    <div class="main-card-wrapper">
+                        <div class="annotation-number-area">
+                            <div class="timeline-icon-box" title="Diretrizes Globais do Tópico">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                            </div>
+                        </div>
+                        <div class="annotation-card">
+                                <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
+                                    <div class="hierarquia-titulo">Diretrizes Globais do Tópico</div>
+                                    <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
+                                        <button title="Adicionar Diretriz Global" onclick="adicionarDiretrizEstrutural('global', '${activeTabId}', null, event)">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                </div>
-                <div class="sub-annotations-wrapper" style="position: relative; min-height: auto;">
-                    ${globaisHtml}
-                </div>
-            </div>`;
+                    </div>
+                    <div class="sub-annotations-wrapper" style="position: relative; min-height: auto;">
+                        ${globaisHtml}
+                    </div>
+                </div>`;
+            }
 
             conteudoCentralHtml = sumarioHtml + `
                 <div class="timeline-container" id="timeline-container">
@@ -1397,6 +1479,8 @@ window.TopicsManager = (function () {
             
             // _ajustarAbasFantasmas(); // Desativado - Scroll horizontal nativo
         });
+        
+        _sincronizarBtnGlobais(temGlobais, forcadoAberto);
     }
 
     /**
@@ -2002,6 +2086,8 @@ window.TopicsManager = (function () {
 
     // API pública do módulo
     return {
+        toggleDiretrizesGlobais,
+        resetVisibilidadeGlobais,
         MAPA_TESE_ICONES,
         obterCor,
         abrirModalPilha,
