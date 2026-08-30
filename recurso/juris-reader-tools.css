@@ -232,6 +232,7 @@ body.modo-extrator-ativo #crop-overlay { display: block; cursor: crosshair; back
     display: flex;
     gap: 4px;
     align-self: stretch; /* Garante que o bloco de abas encoste no teto e no piso do cabeçalho */
+    margin-right: 12px; /* NOVO: Descola a última aba da ilha de ferramentas, criando um respiro visual */
 }
 
 .tabs-nav .tab-btn {
