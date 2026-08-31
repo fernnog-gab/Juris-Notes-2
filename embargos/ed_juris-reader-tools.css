@@ -572,6 +572,125 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 .audio-history-item .hist-time { font-size: 0.75rem; color: #d84315; background: #ffe082; padding: 2px 6px; border-radius: 12px; font-weight: bold; }
 
 /* ================================================
+MINI PLAYER DE ÁUDIO — MODAL FOCADO (ED)
+================================================ */
+.mini-audio-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: calc(var(--z-audio-player) - 1);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+
+.mini-audio-backdrop.is-visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.mini-audio-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.98);
+    width: min(420px, calc(100vw - 32px));
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow:
+        var(--shadow-md),
+        0 24px 64px rgba(0, 0, 0, 0.28);
+    z-index: var(--z-audio-player);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        opacity 0.22s ease,
+        transform 0.22s ease,
+        visibility 0.22s ease;
+}
+
+.mini-audio-modal.is-visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.mini-audio-modal__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 16px 10px 16px;
+    border-bottom: 1px solid #eee;
+}
+
+.mini-audio-modal__title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--trt-blue);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.mini-audio-modal__close {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.mini-audio-modal__close:hover {
+    background: #ffebee;
+    color: #d32f2f;
+}
+
+.mini-audio-modal__close:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(26, 58, 92, 0.25);
+}
+
+.mini-audio-modal__body {
+    padding: 16px;
+}
+
+.mini-audio-modal__body audio {
+    width: 100%;
+    height: 44px;
+    outline: none;
+}
+
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+    .mini-audio-backdrop {
+        background: rgba(15, 23, 42, 0.72);
+    }
+}
+
+@media (max-width: 480px) {
+    .mini-audio-modal {
+        width: calc(100vw - 24px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mini-audio-backdrop,
+    .mini-audio-modal {
+        transition: none;
+    }
+    .mini-audio-modal, .mini-audio-modal.is-visible {
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* ================================================
    5. BOTÕES FLUTUANTES, TOOLTIPS E HIGHLIGHTS (PDF)
    ================================================ */
 .scroll-fab-container { position: fixed; bottom: 32px; right: 28px; display: flex; flex-direction: column; gap: 10px; z-index: 2000; pointer-events: none; }

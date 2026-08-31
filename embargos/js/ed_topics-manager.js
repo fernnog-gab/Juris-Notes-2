@@ -352,18 +352,34 @@ window.TopicsManager = (function () {
             const safeFormatTime = (sec) => window.AudioManager?.formatTime ? window.AudioManager.formatTime(sec) : `${Math.floor(sec/60)}' ${Math.floor(sec%60)}''`;
 
             // Renderiza o cabeçalho com o botão Clickable e Ícone de Play
-            htmlConteudo = `
-                <div class="card-audio">
-                    <div class="audio-icon-box clickable-audio" title="Ouvir este trecho específico" onclick="AudioManager.tocarTrecho(${inicioNum}, ${fimNum})">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                        </svg>
-                    </div>
-                    <div class="audio-card-meta">
-                        <strong>Oitiva:</strong> ${tagVisual}<br>
-                        <span class="audio-time-badge">⏱️ ${safeFormatTime(inicioNum)} a ${safeFormatTime(fimNum)}</span>
-                    </div>
-                </div>`;
+            const trechoValido = Number.isFinite(inicioNum) && Number.isFinite(fimNum) && fimNum > inicioNum;
+
+            if (!trechoValido) {
+                htmlConteudo = `<p class="card-texto" style="color:#c62828;">[Erro: intervalo do áudio inválido]</p>`;
+            } else {
+                const tituloMini = `Oitiva: ${nomePapel}`;
+                const tituloMiniAttr = escaparHTML(tituloMini).replace(/'/g, '&apos;');
+
+                htmlConteudo = `
+                    <div class="card-audio">
+                        <div class="audio-icon-box clickable-audio" 
+                             role="button" 
+                             tabindex="0" 
+                             title="Ouvir este trecho em player focado"
+                             aria-label="${tituloMiniAttr}"
+                             data-audio-inicio="${inicioNum}" 
+                             data-audio-fim="${fimNum}" 
+                             data-audio-titulo="${tituloMiniAttr}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                        </div>
+                        <div class="audio-card-meta">
+                            <strong>Oitiva:</strong> ${tagVisual}<br>
+                            <span class="audio-time-badge">⏱️ ${safeFormatTime(inicioNum)} a ${safeFormatTime(fimNum)}</span>
+                        </div>
+                    </div>`;
+            }
 
             // PRESERVAÇÃO CRÍTICA: Lógica de Comentários e Degravações
             let comentarios = [];
