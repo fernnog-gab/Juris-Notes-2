@@ -420,7 +420,8 @@ window.AudioManager = (function() {
             if (modo === 'mini' && _mini.pending) {
                 const pendente = _mini.pending;
                 _mini.pending = null;
-                _abrirMiniPlayer(pendente.inicio, pendente.fim, pendente.titulo);
+                // Repassa o quarto parâmetro (degravacao) restaurado do cache
+                _abrirMiniPlayer(pendente.inicio, pendente.fim, pendente.titulo, pendente.degravacao);
             } else {
                 abrirPlayer();
             }
@@ -608,12 +609,14 @@ window.AudioManager = (function() {
             </div>
             <div class="mini-audio-modal__body">
                 <audio controls preload="metadata"></audio>
+                <div id="mini-audio-transcription" class="mini-audio-transcript" role="region" aria-label="Texto da degravação" tabindex="0"></div>
             </div>
         `;
 
         _mini.titulo = _mini.modal.querySelector('#mini-audio-title');
         _mini.closeBtn = _mini.modal.querySelector('.mini-audio-modal__close');
         _mini.audio = _mini.modal.querySelector('audio');
+        _mini.transcricao = _mini.modal.querySelector('#mini-audio-transcription');
 
         _mini.closeBtn.addEventListener('click', fecharMiniPlayer);
 
@@ -682,7 +685,7 @@ window.AudioManager = (function() {
         a.addEventListener('ended', _mini.handlers.ended);
     }
 
-    function _abrirMiniPlayer(inicio, fim, titulo) {
+    function _abrirMiniPlayer(inicio, fim, titulo, degravacao = '') {
         if (!_audioUrl) {
             _deps.exibirToast('Áudio da audiência não carregado.', 'erro');
             return;
@@ -706,6 +709,15 @@ window.AudioManager = (function() {
 
         _pararMonitorMini();
         _mini.titulo.textContent = titulo || 'Oitiva';
+
+        // Data-Driven Layout: O JS apenas declara o estado, o CSS assume a geometria
+        const temDegravacao = degravacao && degravacao.trim() !== '';
+        if (temDegravacao) {
+            _mini.transcricao.textContent = degravacao; // Proteção estrita contra XSS
+        } else {
+            _mini.transcricao.textContent = '';
+        }
+        _mini.modal.classList.toggle('has-transcript', temDegravacao);
 
         if (_mini.audio.src !== _audioUrl) {
             _mini.audio.src = _audioUrl;
@@ -795,7 +807,7 @@ window.AudioManager = (function() {
         _mini.ultimoFoco = null;
     }
 
-    async function tocarTrechoEmModal(inicio, fim, titulo) {
+    async function tocarTrechoEmModal(inicio, fim, titulo, degravacao = '') {
         inicio = Number(inicio);
         fim = Number(fim);
 
@@ -807,13 +819,14 @@ window.AudioManager = (function() {
         if (isPlayerVisivel()) fecharPlayer();
 
         if (!_audioUrl) {
-            _mini.pending = { inicio, fim, titulo };
+            // CORREÇÃO CRÍTICA: Salva a degravação no cache assíncrono
+            _mini.pending = { inicio, fim, titulo, degravacao };
             _deps.exibirToast('Carregue o arquivo MP3 da audiência para ouvir o trecho.', 'aviso');
             await solicitarMp3Retomada('mini');
             return;
         }
 
-        _abrirMiniPlayer(inicio, fim, titulo);
+        _abrirMiniPlayer(inicio, fim, titulo, degravacao);
     }
 
     /* ================================================
@@ -825,7 +838,8 @@ window.AudioManager = (function() {
             tocarTrechoEmModal(
                 parseFloat(btn.dataset.audioInicio),
                 parseFloat(btn.dataset.audioFim),
-                btn.dataset.audioTitulo
+                btn.dataset.audioTitulo,
+                btn.dataset.audioDegravacao || ''
             );
         }
     });
@@ -838,7 +852,8 @@ window.AudioManager = (function() {
                 tocarTrechoEmModal(
                     parseFloat(btn.dataset.audioInicio),
                     parseFloat(btn.dataset.audioFim),
-                    btn.dataset.audioTitulo
+                    btn.dataset.audioTitulo,
+                    btn.dataset.audioDegravacao || ''
                 );
             }
         }

@@ -359,6 +359,9 @@ window.TopicsManager = (function () {
             } else {
                 const tituloMini = `Oitiva: ${nomePapel}`;
                 const tituloMiniAttr = escaparHTML(tituloMini).replace(/'/g, '&apos;');
+                
+                // Injeção condicional: só cria o atributo se houver transcrição
+                const degravacaoAttr = dadosAudio.transcricao ? `data-audio-degravacao="${escaparHTML(dadosAudio.transcricao).replace(/'/g, '&apos;')}"` : '';
 
                 htmlConteudo = `
                     <div class="card-audio">
@@ -369,7 +372,8 @@ window.TopicsManager = (function () {
                              aria-label="${tituloMiniAttr}"
                              data-audio-inicio="${inicioNum}" 
                              data-audio-fim="${fimNum}" 
-                             data-audio-titulo="${tituloMiniAttr}">
+                             data-audio-titulo="${tituloMiniAttr}"
+                             ${degravacaoAttr}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
                             </svg>
@@ -385,9 +389,10 @@ window.TopicsManager = (function () {
             let comentarios = [];
             if (anotacao.comentario) comentarios.push(`<strong>Contexto:</strong> ${escaparHTML(anotacao.comentario)}`);
             if (dadosAudio.transcricao) {
+                // A MÁGICA DA QUEBRA DE LINHA ACONTECE NO STYLE ABAIXO (white-space: pre-wrap)
                 comentarios.push(`
                     <div style="display:flex; align-items:flex-start; gap:4px;">
-                        <div><strong>Degravação:</strong> <em>"${escaparHTML(dadosAudio.transcricao)}"</em></div>
+                        <div style="flex: 1; white-space: pre-wrap; overflow-wrap: break-word;"><strong>Degravação:</strong> <em>"${escaparHTML(dadosAudio.transcricao)}"</em></div>
                         <button class="btn-copy-degravacao" title="Copiar Degravação" onclick="window.copiarDegravacao('${anotacao.topicoIdOrigem || activeTabId}', '${anotacao.uuid || ''}')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -1966,7 +1971,10 @@ window.OutlineViewManager = (function() {
                 const role = TopicsManager.escaparHTML(ad.role || ad.oradorStr || 'Orador Desconhecido');
                 const safeFormatTime = (sec) => window.AudioManager?.formatTime ? window.AudioManager.formatTime(sec) : `${Math.floor(sec/60)}' ${Math.floor(sec%60)}''`;
                 const tempoStr = `${safeFormatTime(ad.inicio)} a ${safeFormatTime(ad.fim)}`;
-                const transcricao = ad.transcricao ? `<strong>Degravação:</strong> "${_render(ad.transcricao)}"` : '<em>Sem degravação cadastrada.</em>';
+                // Adicionado .replace(/\n/g, '<br>') para respeitar quebras na Visão Estruturada
+                const transcricao = ad.transcricao 
+                    ? `<strong>Degravação:</strong> "${_render(ad.transcricao).replace(/\n/g, '<br>')}"` 
+                    : '<em>Sem degravação cadastrada.</em>';
                 return `<div class="outline-audio-box"><div>🎙️ <strong>Oitiva de Audiência:</strong> ${role} (⏱️ ${tempoStr})</div><div style="margin-top:4px;">${transcricao}</div></div>`;
             } catch (e) {
                 return `<div class="outline-audio-box" style="color:#d32f2f;">Erro na leitura do áudio.</div>`;
