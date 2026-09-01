@@ -329,16 +329,34 @@ window.TopicsManager = (function () {
             }
 
             // Garante extração segura de tempos matemáticos (fallback para 0)
-            const inicioNum = dadosAudio.inicio || 0;
-            const fimNum = dadosAudio.fim || 0;
+            const inicioNum = Number(dadosAudio.inicio || 0);
+            const fimNum = Number(dadosAudio.fim || 0);
+            const trechoValido = Number.isFinite(inicioNum) && Number.isFinite(fimNum) && fimNum > inicioNum;
             
+            if (!trechoValido) {
+                return {
+                    htmlConteudo: `<p class="card-texto" style="color:#c62828;">[Erro: intervalo do áudio inválido]</p>`,
+                    htmlComentario: ''
+                };
+            }
+
+            const tituloMini = `Oitiva: ${nomePapel}`;
+            const tituloMiniAttr = escaparHTML(tituloMini).replace(/'/g, '&apos;');
+
             const safeFormatTime = (sec) => window.AudioManager?.formatTime ? window.AudioManager.formatTime(sec) : `${Math.floor(sec/60)}' ${Math.floor(sec%60)}''`;
 
-            // Renderiza o cabeçalho com o botão Clickable e Ícone de Play
+            // Renderiza o cabeçalho com o botão Clickable e Ícone de Play (Delegação Global)
             htmlConteudo = `
                 <div class="card-audio">
-                    <div class="audio-icon-box clickable-audio" title="Ouvir este trecho específico" onclick="AudioManager.tocarTrecho(${inicioNum}, ${fimNum})">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <div class="audio-icon-box clickable-audio" 
+                         role="button" 
+                         tabindex="0" 
+                         title="Ouvir este trecho em player focado"
+                         aria-label="${tituloMiniAttr}"
+                         data-audio-inicio="${inicioNum}" 
+                         data-audio-fim="${fimNum}" 
+                         data-audio-titulo="${tituloMiniAttr}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
                         </svg>
                     </div>
