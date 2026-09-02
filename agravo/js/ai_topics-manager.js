@@ -24,9 +24,349 @@ window.TopicsManager = (function () {
         }
     };
 
-    let _activeTopicoCor = '#ffffff';
+    function renderizarFichario(topicosArray) {
+        const headerEl  = document.getElementById('topics-tabs-header');
+        const contentEl = document.getElementById('topics-tab-content');
 
-    function obterCorContraste(hex) {
+        if (!headerEl || !contentEl) return;
+
+        if (topicosArray.length === 0) {
+            headerEl.innerHTML = '';
+            contentEl.innerHTML = `
+                <p class="empty-state">
+                    Nenhum tópico criado.<br>
+                    Use o botão <strong>+</strong> na barra lateral para criar um Tópico Recursal.
+                </p>`;
+            contentEl.style.borderTop       = 'none';
+            contentEl.style.backgroundColor = 'transparent';
+            return;
+        }
+
+        if (!activeTabId || !topicosArray.some(t => t.id === activeTabId)) {
+            activeTabId = topicosArray[0].id;
+        }
+
+        const scrollAnterior = headerEl.scrollLeft;
+        let abaAtivaNode = null;
+
+        headerEl.innerHTML = '';
+        [...topicosArray].reverse().forEach(topico => {
+            const isActive = topico.id === activeTabId;
+            const btn      = document.createElement('div');
+
+            btn.className        = `topic-tab-btn ${isActive ? 'active' : ''}`;
+            btn.title            = topico.nome; 
+            
+            const corContraste = obterCorContraste(topico.cor);
+            btn.style.setProperty('--tab-bg', topico.cor);
+            btn.style.setProperty('--tab-color', corContraste);
+
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'tab-label';
+            labelSpan.textContent = topico.nome;
+            btn.appendChild(labelSpan);
+
+            btn.onclick = () => {
+                activeTabId = topico.id;
+                renderizarFichario(topicosArray);
+            };
+
+            headerEl.appendChild(btn);
+            if (isActive) abaAtivaNode = btn;
+        });
+
+        const topicoAtivo = topicosArray.find(t => t.id === activeTabId);
+        if (!topicoAtivo) return;
+
+        _activeTopicoCor = topicoAtivo.cor;
+        const corTextoTese = obterCorContraste(_activeTopicoCor);
+        contentEl.style.setProperty('--active-tab-color', escurecerCor(_activeTopicoCor));
+
+        requestAnimationFrame(() => {
+            headerEl.scrollLeft = scrollAnterior;
+            if (abaAtivaNode) {
+                abaAtivaNode.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            }
+        });
+
+        const preambleHtml = `
+            <div class="topic-preamble-panel">
+                <div class="preamble-card preamble-alegacao ${!topicoAtivo.alegacoes ? 'is-empty' : ''}" onclick="abrirEdicaoPreambulo('${activeTabId}', 'alegacoes')">
+                    <div class="preamble-icon ai-trigger-btn" 
+                         title="✨ Inteligência Artificial: Buscar modelos compatíveis" 
+                         onclick="event.stopPropagation(); window.AIRecommendationManager && AIRecommendationManager.buscarModelosCompativeis('${activeTabId}', decodeURIComponent('${encodeURIComponent(topicoAtivo.alegacoes || '').replace(/'/g, "%27")}'))">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" class="ai-sparkle" style="display:none; transform-origin: 12px 12px;"></path>
+                        </svg>
+                    </div>
+                    <div class="preamble-content">
+                        <span class="preamble-title">${AI_UI_LABELS.alegacao.titulo}</span>
+                        ${topicoAtivo.alegacoes ? renderizarMarkdownSeguro(escaparHTML(topicoAtivo.alegacoes)) : `<span class="preamble-empty">${AI_UI_LABELS.alegacao.placeholder}</span>`}
+                    </div>
+                </div>
+                <div class="preamble-card preamble-origem" onclick="abrirEdicaoPreambulo('${activeTabId}', 'fundamentos')">
+                    <div class="preamble-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 7v14M21 7v14M6 21V7l6-4 6 4v14"></path></svg>
+                    </div>
+                    <div class="preamble-content">
+                        <span class="preamble-title">${AI_UI_LABELS.origem.titulo}</span>
+                        ${topicoAtivo.fundamentos ? renderizarMarkdownSeguro(escaparHTML(topicoAtivo.fundamentos)) : `<span class="preamble-empty">${AI_UI_LABELS.origem.placeholder}</span>`}
+                    </div>
+                </div>
+                <div class="preamble-card preamble-veredito" onclick="abrirEdicaoPreambulo('${activeTabId}', 'veredito')">
+                    <div class="preamble-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                    </div>
+                    <div class="preamble-content">
+                        <span class="preamble-title">${AI_UI_LABELS.veredito.titulo}</span>
+                        ${topicoAtivo.veredito ? renderizarMarkdownSeguro(escaparHTML(topicoAtivo.veredito)) : `<span class="preamble-empty">${AI_UI_LABELS.veredito.placeholder}</span>`}
+                    </div>
+                </div>
+            </div>`;
+
+        let conteudoCentralHtml = '';
+
+        const temAnotacoes = topicoAtivo.anotacoes && topicoAtivo.anotacoes.length > 0;
+        const temGlobais = topicoAtivo.diretrizesGlobais && topicoAtivo.diretrizesGlobais.length > 0;
+        const forcadoAberto = _topicosComGlobaisAbertas.has(activeTabId);
+
+        if (!temAnotacoes && !temGlobais && !forcadoAberto) {
+            conteudoCentralHtml = `
+                <p class="empty-state" style="margin-top: 20px;">
+                    A Matriz Dialética está vazia. Adicione extrações das provas ou clique no Globo no cabeçalho para inserir Diretrizes Globais.
+                </p>`;
+            const novoHtml = preambleHtml + conteudoCentralHtml;
+            
+            if (typeof resizeObserver !== 'undefined') resizeObserver.disconnect();
+            if (typeof morphdom !== 'undefined') {
+                morphdom(contentEl, `<div id="topics-tab-content" class="topics-content-area" style="${contentEl.style.cssText}">${novoHtml}</div>`, {
+                    childrenOnly: true,
+                    getNodeKey: function(node) { if (node.id) return node.id; }
+                });
+            } else {
+                contentEl.innerHTML = novoHtml;
+            }
+            
+            _sincronizarBtnGlobais(false, false);
+            return;
+        }
+
+        let sumarioHtml = '';
+        const tesesValidas = topicoAtivo.anotacoes.filter(an => an.tese && an.tese.trim() !== '');
+        if (tesesValidas.length > 0) {
+            sumarioHtml = `<div class="thesis-summary-panel">`;
+
+            topicoAtivo.anotacoes.forEach((an, idx) => {
+                if (an.tese && an.tese.trim() !== '') {
+                    const fasesPresentes = new Set();
+                    fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(an.documento) : 4);
+                    
+                    if (an.itensCorrelacionados?.length) {
+                        an.itensCorrelacionados.forEach(ic => fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4));
+                    }
+
+                    if (an.itensCorrelacionados?.length) {
+                        an.itensCorrelacionados.forEach(ic => {
+                            if (ic.subAnotacoes && ic.subAnotacoes.length > 0) {
+                                fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4);
+                            }
+                        });
+                    }
+
+                    const cores = [];
+                    if(fasesPresentes.has(1)) cores.push('var(--fase-1-bg)');
+                    if(fasesPresentes.has(2)) cores.push('var(--fase-2-bg)');
+                    if(fasesPresentes.has(3)) cores.push('var(--fase-3-bg)');
+                    if(fasesPresentes.has(4)) cores.push('var(--fase-4-bg)');
+                    
+                    let bgStyle = '';
+                    if(cores.length > 0) {
+                        const step = 100 / cores.length;
+                        const gradients = cores.map((cor, i) => `${cor} ${i * step}%, ${cor} ${(i + 1) * step}%`);
+                        bgStyle = `style="background: linear-gradient(to right, ${gradients.join(', ')}), #ffffff;"`; 
+                    }
+
+                    const matrizCalculo = topicoAtivo.matrizCalculo || 'omissao';
+                    let isMature = false;
+
+                    if (matrizCalculo === 'admissibilidade') {
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && fasesPresentes.has(4);
+                    } else if (matrizCalculo === 'omissao') {
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(2) && fasesPresentes.has(3);
+                    } else if (matrizCalculo === 'contradicao') {
+                        let contadorRoxo = (typeof identificarFaseMetodologica === 'function' && identificarFaseMetodologica(an.documento) === 3) ? 1 : 0;
+                        if (an.itensCorrelacionados) {
+                            contadorRoxo += an.itensCorrelacionados.filter(ic => typeof identificarFaseMetodologica === 'function' && identificarFaseMetodologica(ic.documento) === 3).length;
+                        }
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && (contadorRoxo >= 2);
+                    } else if (matrizCalculo === 'erro') {
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && fasesPresentes.has(4);
+                    }
+
+                    const matureClass = isMature ? 'mature' : '';
+                    const txt = escaparHTML(an.tese);
+
+                    sumarioHtml += `
+                        <div class="thesis-badge ${matureClass}" onclick="abrirModalTese('${activeTabId}', ${idx})">
+                            <div class="thesis-badge-inner" ${bgStyle}>
+                                <span class="num" style="background-color: ${_activeTopicoCor}; color: ${corTextoTese};">${idx + 1}</span> 
+                                <span class="texto-tese">${txt}</span>
+                            </div>
+                        </div>`;
+                }
+            });
+            sumarioHtml += '</div>';
+        }
+
+        let cardsHTML = '';
+        let ultimaTeseRenderizada = null;
+
+        const renderContext = {
+            romanCounter: 0,
+            romanMap: new Map() 
+        };
+
+        topicoAtivo.anotacoes.forEach((an, index) => {
+            const chaveObiceCrua = an.tese || "Óbice Não Nomeado"; 
+            const diretrizes = (topicoAtivo.diretrizesPorObice && topicoAtivo.diretrizesPorObice[chaveObiceCrua]) 
+                                ? topicoAtivo.diretrizesPorObice[chaveObiceCrua] 
+                                : [];
+            
+            const isObicePreenchido = (an.tese && an.tese.trim() !== '');
+
+            if (chaveObiceCrua !== ultimaTeseRenderizada) {
+                if (isObicePreenchido || diretrizes.length > 0) {
+                    const tituloExibicao = isObicePreenchido ? an.tese : "Óbice Não Nomeado";
+                    cardsHTML += _gerarHtmlObiceGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index, renderContext);
+                }
+                ultimaTeseRenderizada = chaveObiceCrua;
+            }
+            cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
+        });
+        
+        let htmlDiretrizesGlobais = '';
+        let globaisHtml = ''; 
+
+        if (temGlobais || forcadoAberto) {
+            if (temGlobais) {
+                const globaisArray = [];
+                const gruposGProcessados = new Set();
+                
+                topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
+                    const dRender = { ...d, viewSource: 'global', localIndex: sIdx };
+                    
+                    if (!dRender.grupoId) {
+                        globaisArray.push(_gerarTemplateSubNo(dRender, sIdx, {
+                            topicoId: activeTabId,
+                            parentIndex: null,
+                            viewSource: 'global',
+                            bordaClass: 'borda-global',
+                            prefixoBadge: 'G.',
+                            usarLetra: false,
+                            tituloLeitura: 'Diretriz Global'
+                        }));
+                    } else {
+                        if (!gruposGProcessados.has(dRender.grupoId)) {
+                            gruposGProcessados.add(dRender.grupoId);
+                            globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
+                        }
+                    }
+                });
+                globaisHtml = globaisArray.join('');
+            }
+
+            htmlDiretrizesGlobais = `
+            <div class="timeline-item-master align-left nivel-hierarquico nivel-global" id="timeline-wrapper-global">
+                <div class="main-card-wrapper" data-cidx="main">
+                    <div class="annotation-number-area">
+                        <div class="timeline-icon-box" title="Diretrizes Globais de Admissibilidade">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                        </div>
+                    </div>
+                    <div class="annotation-card">
+                            <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
+                                <div class="hierarquia-titulo">Diretrizes Globais de Admissibilidade</div>
+                                <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
+                                    <button title="Adicionar Diretriz Global" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:'global'}; acionarNovoNoIdeia()">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                </div>
+                <div class="sub-annotations-wrapper" style="position: relative; min-height: auto;">
+                    ${globaisHtml}
+                </div>
+            </div>`;
+        }
+
+        conteudoCentralHtml = sumarioHtml + `
+            <div class="timeline-container" id="timeline-container">
+                <svg id="connections-canvas"></svg>
+                ${htmlDiretrizesGlobais}
+                ${cardsHTML}
+            </div>`;
+
+        const novoHtml = preambleHtml + conteudoCentralHtml;
+            
+        if (typeof resizeObserver !== 'undefined') resizeObserver.disconnect();
+
+        if (typeof morphdom !== 'undefined') {
+            morphdom(contentEl, `<div id="topics-tab-content" class="topics-content-area" style="${contentEl.style.cssText}">${novoHtml}</div>`, {
+                childrenOnly: true,
+                getNodeKey: function(node) {
+                    if (node.id) return node.id;
+                }
+            });
+        } else {
+            contentEl.innerHTML = novoHtml;
+        }
+            
+        requestAnimationFrame(() => {
+            const textNodes = Array.from(document.querySelectorAll('.sub-text-content, .card-texto'));
+            const measurements = textNodes.map(node => ({
+                el: node,
+                btn: node.parentElement.querySelector('.btn-expand-text'),
+                isOverflowing: node.scrollHeight > node.clientHeight
+            }));
+
+            requestAnimationFrame(() => {
+                measurements.forEach(m => {
+                    if (typeof resizeObserver !== 'undefined') resizeObserver.observe(m.el);
+                    
+                    if (m.isOverflowing) {
+                        if (m.btn) m.btn.style.display = 'inline-flex';
+                        m.el.classList.add('is-truncated');
+                    } else {
+                        if (m.btn) m.btn.style.display = 'none';
+                        m.el.classList.remove('is-truncated');
+                    }
+                });
+                
+                const historyContainer = document.getElementById('history-container');
+                if(historyContainer && typeof resizeObserver !== 'undefined') resizeObserver.observe(historyContainer);
+                
+                document.querySelectorAll('.image-resize-wrapper').forEach(wrapper => {
+                    wrapper.addEventListener('mouseup', () => desenharConexoes());
+                    wrapper.addEventListener('mouseleave', () => desenharConexoes());
+                });
+
+                const container = document.getElementById('timeline-container');
+                if (container) {
+                    posicionarNosDeIdeia(container);
+                    requestAnimationFrame(() => {
+                        desenharConexoes();
+                    });
+                }
+                
+                _atualizarMarcadoresDeIdeia(topicoAtivo);
+                atualizarContadorNotasOcultas();
+            });
+        });
+        
+        _sincronizarBtnGlobais(temGlobais, forcadoAberto);
+    }
         if (!hex || !hex.startsWith('#')) return '#ffffff';
         let cleanHex = hex.replace('#', '');
         if (cleanHex.length === 3) cleanHex = cleanHex.split('').map(c => c + c).join('');
@@ -1852,6 +2192,8 @@ window.TopicsManager = (function () {
 
     // API pública do módulo
     return {
+        toggleDiretrizesGlobais,
+        resetVisibilidadeGlobais,
         abrirModalPilha,
         fecharModalPilha,
         salvarEdicaoPilha,
