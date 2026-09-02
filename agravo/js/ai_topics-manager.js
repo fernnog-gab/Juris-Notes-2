@@ -1247,10 +1247,10 @@ window.TopicsManager = (function () {
             <div class="timeline-item-master align-left nivel-hierarquico nivel-global" id="timeline-wrapper-global">
                 <div class="main-card-wrapper" data-cidx="main">
                     <div class="annotation-number-area">
-                        <div class="timeline-icon-box" title="Diretrizes Globais de Admissibilidade">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                            <div class="timeline-icon-box" title="Diretrizes Globais de Admissibilidade">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                            </div>
                         </div>
-                    </div>
                     <div class="annotation-card">
                             <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
                                 <div class="hierarquia-titulo">Diretrizes Globais de Admissibilidade</div>

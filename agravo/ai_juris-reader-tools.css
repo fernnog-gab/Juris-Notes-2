@@ -604,12 +604,12 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 }
 
 .header-tools-area .header-icon-btn.is-active {
-    background-color: #fbc02d; 
+    background-color: #A3E635; /* Verde Limão característico do Agravo (AI) */
     color: #1a1a1a; 
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
 .header-tools-area .header-icon-btn.is-active:hover {
-    background-color: #f9a825;
+    background-color: #8ce015; /* Verde Limão escurecido no hover */
     transform: scale(1.08);
 }
 
