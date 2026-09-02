@@ -987,16 +987,12 @@ window.TopicsManager = (function () {
         </div>`;
     }
 
-    /**
-     * Re-renderiza o fichário inteiro.
-     */
     function renderizarFichario(topicosArray) {
         const headerEl  = document.getElementById('topics-tabs-header');
         const contentEl = document.getElementById('topics-tab-content');
 
         if (!headerEl || !contentEl) return;
 
-        // Estado vazio: nenhum tópico criado ainda
         if (topicosArray.length === 0) {
             headerEl.innerHTML = '';
             contentEl.innerHTML = `
@@ -1009,16 +1005,13 @@ window.TopicsManager = (function () {
             return;
         }
 
-        // Resiliência: garante que sempre há uma aba ativa válida
         if (!activeTabId || !topicosArray.some(t => t.id === activeTabId)) {
             activeTabId = topicosArray[0].id;
         }
 
-        // Cache do scroll atual antes da destruição
         const scrollAnterior = headerEl.scrollLeft;
         let abaAtivaNode = null;
 
-        // 1. Construir as abas do fichário (Mais recentes à esquerda)
         headerEl.innerHTML = '';
         [...topicosArray].reverse().forEach(topico => {
             const isActive = topico.id === activeTabId;
@@ -1027,12 +1020,10 @@ window.TopicsManager = (function () {
             btn.className        = `topic-tab-btn ${isActive ? 'active' : ''}`;
             btn.title            = topico.nome; 
             
-            // Injeção declarativa de variáveis CSS (Aba ganha inteligência via CSS)
             const corContraste = obterCorContraste(topico.cor);
             btn.style.setProperty('--tab-bg', topico.cor);
             btn.style.setProperty('--tab-color', corContraste);
 
-            // Encapsulamento da label para o ellipsis funcionar perfeitamente
             const labelSpan = document.createElement('span');
             labelSpan.className = 'tab-label';
             labelSpan.textContent = topico.nome;
@@ -1044,22 +1035,16 @@ window.TopicsManager = (function () {
             };
 
             headerEl.appendChild(btn);
-            
-            // Captura o node para centralizar a visão nele após o render
             if (isActive) abaAtivaNode = btn;
         });
 
-        // 2. Construir o conteúdo do tópico ativo
         const topicoAtivo = topicosArray.find(t => t.id === activeTabId);
         if (!topicoAtivo) return;
 
         _activeTopicoCor = topicoAtivo.cor;
         const corTextoTese = obterCorContraste(_activeTopicoCor);
-        
-        // Transmite a cor da aba ativa para a borda superior do conteúdo (escurecendo levemente)
         contentEl.style.setProperty('--active-tab-color', escurecerCor(_activeTopicoCor));
 
-        // Restauração do estado de scroll após o paint do DOM
         requestAnimationFrame(() => {
             headerEl.scrollLeft = scrollAnterior;
             if (abaAtivaNode) {
@@ -1067,7 +1052,6 @@ window.TopicsManager = (function () {
             }
         });
 
-        // NOVO: Painel Preâmbulo Estático gerado incondicionalmente
         const preambleHtml = `
             <div class="topic-preamble-panel">
                 <div class="preamble-card preamble-alegacao ${!topicoAtivo.alegacoes ? 'is-empty' : ''}" onclick="abrirEdicaoPreambulo('${activeTabId}', 'alegacoes')">
@@ -1104,10 +1088,6 @@ window.TopicsManager = (function () {
                 </div>
             </div>`;
 
-        // =========================================================
-        // RENDERIZAÇÃO LIMPA: DIRETRIZES E CARDS (Padrão RO adaptado para AI)
-        // =========================================================
-
         let conteudoCentralHtml = '';
 
         const temAnotacoes = topicoAtivo.anotacoes && topicoAtivo.anotacoes.length > 0;
@@ -1138,181 +1118,167 @@ window.TopicsManager = (function () {
         }
 
         let sumarioHtml = '';
-            const tesesValidas = topicoAtivo.anotacoes.filter(an => an.tese && an.tese.trim() !== '');
-            if (tesesValidas.length > 0) {
-                sumarioHtml = `<div class="thesis-summary-panel">`;
+        const tesesValidas = topicoAtivo.anotacoes.filter(an => an.tese && an.tese.trim() !== '');
+        if (tesesValidas.length > 0) {
+            sumarioHtml = `<div class="thesis-summary-panel">`;
 
-                topicoAtivo.anotacoes.forEach((an, idx) => {
-                    if (an.tese && an.tese.trim() !== '') {
-                        const fasesPresentes = new Set();
-                        
-                        fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(an.documento) : 4);
-                        
-                        if (an.itensCorrelacionados?.length) {
-                            an.itensCorrelacionados.forEach(ic => fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4));
-                        }
+            topicoAtivo.anotacoes.forEach((an, idx) => {
+                if (an.tese && an.tese.trim() !== '') {
+                    const fasesPresentes = new Set();
+                    
+                    fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(an.documento) : 4);
+                    
+                    if (an.itensCorrelacionados?.length) {
+                        an.itensCorrelacionados.forEach(ic => fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4));
+                    }
 
-                        if (an.itensCorrelacionados?.length) {
-                            an.itensCorrelacionados.forEach(ic => {
-                                if (ic.subAnotacoes && ic.subAnotacoes.length > 0) {
-                                    fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4);
-                                }
-                            });
-                        }
-
-                        const cores = [];
-                        if(fasesPresentes.has(1)) cores.push('var(--fase-1-bg)');
-                        if(fasesPresentes.has(2)) cores.push('var(--fase-2-bg)');
-                        if(fasesPresentes.has(3)) cores.push('var(--fase-3-bg)');
-                        if(fasesPresentes.has(4)) cores.push('var(--fase-4-bg)');
-                        
-                        let bgStyle = '';
-                        if(cores.length > 0) {
-                            const step = 100 / cores.length;
-                            const gradients = cores.map((cor, i) => `${cor} ${i * step}%, ${cor} ${(i + 1) * step}%`);
-                            bgStyle = `style="background: linear-gradient(to right, ${gradients.join(', ')}), #ffffff;"`; 
-                        }
-
-                        const matrizCalculo = topicoAtivo.matrizCalculo || 'omissao';
-                        let isMature = false;
-
-                        if (matrizCalculo === 'admissibilidade') {
-                            isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && fasesPresentes.has(4);
-                        } else if (matrizCalculo === 'omissao') {
-                            isMature = fasesPresentes.has(1) && fasesPresentes.has(2) && fasesPresentes.has(3);
-                        } else if (matrizCalculo === 'contradicao') {
-                            let contadorRoxo = (typeof identificarFaseMetodologica === 'function' && identificarFaseMetodologica(an.documento) === 3) ? 1 : 0;
-                            if (an.itensCorrelacionados) {
-                                contadorRoxo += an.itensCorrelacionados.filter(ic => typeof identificarFaseMetodologica === 'function' && identificarFaseMetodologica(ic.documento) === 3).length;
+                    if (an.itensCorrelacionados?.length) {
+                        an.itensCorrelacionados.forEach(ic => {
+                            if (ic.subAnotacoes && ic.subAnotacoes.length > 0) {
+                                fasesPresentes.add(typeof identificarFaseMetodologica === 'function' ? identificarFaseMetodologica(ic.documento) : 4);
                             }
-                            isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && (contadorRoxo >= 2);
-                        } else if (matrizCalculo === 'erro') {
-                            isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && fasesPresentes.has(4);
+                        });
+                    }
+
+                    const cores = [];
+                    if(fasesPresentes.has(1)) cores.push('var(--fase-1-bg)');
+                    if(fasesPresentes.has(2)) cores.push('var(--fase-2-bg)');
+                    if(fasesPresentes.has(3)) cores.push('var(--fase-3-bg)');
+                    if(fasesPresentes.has(4)) cores.push('var(--fase-4-bg)');
+                    
+                    let bgStyle = '';
+                    if(cores.length > 0) {
+                        const step = 100 / cores.length;
+                        const gradients = cores.map((cor, i) => `${cor} ${i * step}%, ${cor} ${(i + 1) * step}%`);
+                        bgStyle = `style="background: linear-gradient(to right, ${gradients.join(', ')}), #ffffff;"`; 
+                    }
+
+                    const matrizCalculo = topicoAtivo.matrizCalculo || 'omissao';
+                    let isMature = false;
+
+                    if (matrizCalculo === 'admissibilidade') {
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && fasesPresentes.has(4);
+                    } else if (matrizCalculo === 'omissao') {
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(2) && fasesPresentes.has(3);
+                    } else if (matrizCalculo === 'contradicao') {
+                        let contadorRoxo = (typeof identificarFaseMetodologica === 'function' && identificarFaseMetodologica(an.documento) === 3) ? 1 : 0;
+                        if (an.itensCorrelacionados) {
+                            contadorRoxo += an.itensCorrelacionados.filter(ic => typeof identificarFaseMetodologica === 'function' && identificarFaseMetodologica(ic.documento) === 3).length;
                         }
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && (contadorRoxo >= 2);
+                    } else if (matrizCalculo === 'erro') {
+                        isMature = fasesPresentes.has(1) && fasesPresentes.has(3) && fasesPresentes.has(4);
+                    }
 
-                        const matureClass = isMature ? 'mature' : '';
-                        const txt = escaparHTML(an.tese);
+                    const matureClass = isMature ? 'mature' : '';
+                    const txt = escaparHTML(an.tese);
 
-                        sumarioHtml += `
-                            <div class="thesis-badge ${matureClass}" onclick="abrirModalTese('${activeTabId}', ${idx})">
-                                <div class="thesis-badge-inner" ${bgStyle}>
-                                    <span class="num" style="background-color: ${_activeTopicoCor}; color: ${corTextoTese};">${idx + 1}</span> 
-                                    <span class="texto-tese">${txt}</span>
-                                </div>
-                            </div>`;
+                    sumarioHtml += `
+                        <div class="thesis-badge ${matureClass}" onclick="abrirModalTese('${activeTabId}', ${idx})">
+                            <div class="thesis-badge-inner" ${bgStyle}>
+                                <span class="num" style="background-color: ${_activeTopicoCor}; color: ${corTextoTese};">${idx + 1}</span> 
+                                <span class="texto-tese">${txt}</span>
+                            </div>
+                        </div>`;
+                }
+            });
+            sumarioHtml += '</div>';
+        }
+
+        let cardsHTML = '';
+        let ultimaTeseRenderizada = null;
+
+        const renderContext = {
+            romanCounter: 0,
+            romanMap: new Map() 
+        };
+
+        topicoAtivo.anotacoes.forEach((an, index) => {
+            const chaveObiceCrua = an.tese || "Óbice Não Nomeado"; 
+            const diretrizes = (topicoAtivo.diretrizesPorObice && topicoAtivo.diretrizesPorObice[chaveObiceCrua]) 
+                                ? topicoAtivo.diretrizesPorObice[chaveObiceCrua] 
+                                : [];
+            
+            const isObicePreenchido = (an.tese && an.tese.trim() !== '');
+
+            if (chaveObiceCrua !== ultimaTeseRenderizada) {
+                if (isObicePreenchido || diretrizes.length > 0) {
+                    const tituloExibicao = isObicePreenchido ? an.tese : "Óbice Não Nomeado";
+                    cardsHTML += _gerarHtmlObiceGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index, renderContext);
+                }
+                ultimaTeseRenderizada = chaveObiceCrua;
+            }
+            
+            cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
+        });
+        
+        let htmlDiretrizesGlobais = '';
+        let globaisHtml = ''; 
+
+        if (temGlobais || forcadoAberto) {
+            if (temGlobais) {
+                const globaisArray = [];
+                const gruposGProcessados = new Set();
+                
+                topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
+                    const dRender = { ...d, viewSource: 'global', localIndex: sIdx };
+                    
+                    if (!dRender.grupoId) {
+                        globaisArray.push(_gerarTemplateSubNo(dRender, sIdx, {
+                            topicoId: activeTabId,
+                            parentIndex: null,
+                            viewSource: 'global',
+                            bordaClass: 'borda-global',
+                            prefixoBadge: 'G.',
+                            usarLetra: false,
+                            tituloLeitura: 'Diretriz Global'
+                        }));
+                    } else {
+                        if (!gruposGProcessados.has(dRender.grupoId)) {
+                            gruposGProcessados.add(dRender.grupoId);
+                            globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
+                        }
                     }
                 });
-                sumarioHtml += '</div>';
+                globaisHtml = globaisArray.join('');
             }
 
-            let cardsHTML = '';
-            let ultimaTeseRenderizada = null;
-
-            // Injeta o contexto de renderização isolado para a aba
-            const renderContext = {
-                romanCounter: 0,
-                romanMap: new Map() // Mapeia grupoId -> Numeral Romano
-            };
-
-            // 1. LOOP DE PROVAS E DIRETRIZES POR ÓBICE (TESE) - Ocultação Segura
-            topicoAtivo.anotacoes.forEach((an, index) => {
-                // 1. Busca os dados de forma segura (preserva notas já criadas)
-                const chaveObiceCrua = an.tese || "Óbice Não Nomeado"; 
-                const diretrizes = (topicoAtivo.diretrizesPorObice && topicoAtivo.diretrizesPorObice[chaveObiceCrua]) 
-                                    ? topicoAtivo.diretrizesPorObice[chaveObiceCrua] 
-                                    : [];
-                
-                // 2. Verifica se o usuário de fato escreveu um óbice/tese
-                const isObicePreenchido = (an.tese && an.tese.trim() !== '');
-
-                // 3. Se houver quebra de grupo (novo grupo de provas)
-                if (chaveObiceCrua !== ultimaTeseRenderizada) {
-                    
-                    // 4. Ocultação Segura: Só desenha o card se o óbice tiver nome OU se houver notas salvas nele
-                    if (isObicePreenchido || diretrizes.length > 0) {
-                        const tituloExibicao = isObicePreenchido ? an.tese : "Óbice Não Nomeado";
-                        cardsHTML += _gerarHtmlObiceGroup(tituloExibicao, diretrizes, activeTabId, _activeTopicoCor, index, renderContext);
-                    }
-                    
-                    // Atualiza a referência do agrupamento atual
-                    ultimaTeseRenderizada = chaveObiceCrua;
-                }
-                
-                // Desenha o card da prova e o número colorido exatamente como antes (Intocado)
-                cardsHTML += criarCard(an, index, topicoAtivo.anotacoes, renderContext);
-            });
-            
-            // 2. RENDERIZAÇÃO CONDICIONAL: DIRETRIZES GLOBAIS (TOPO)
-            let htmlDiretrizesGlobais = '';
-            let globaisHtml = ''; 
-
-            if (temGlobais || forcadoAberto) {
-                if (temGlobais) {
-                    const globaisArray = [];
-                    const gruposGProcessados = new Set();
-                    
-                    topicoAtivo.diretrizesGlobais.forEach((d, sIdx) => {
-                        const dRender = { ...d, viewSource: 'global', localIndex: sIdx };
-                        
-                        if (!dRender.grupoId) {
-                            globaisArray.push(_gerarTemplateSubNo(dRender, sIdx, {
-                                topicoId: activeTabId,
-                                parentIndex: null,
-                                viewSource: 'global',
-                                bordaClass: 'borda-global',
-                                prefixoBadge: 'G.',
-                                usarLetra: false,
-                                tituloLeitura: 'Diretriz Global'
-                            }));
-                        } else {
-                            if (!gruposGProcessados.has(dRender.grupoId)) {
-                                gruposGProcessados.add(dRender.grupoId);
-                                globaisArray.push(_gerarHtmlPilha(dRender, renderContext, activeTabId));
-                            }
-                        }
-                    });
-                    globaisHtml = globaisArray.join('');
-                }
-
-                htmlDiretrizesGlobais = `
-                <div class="timeline-item-master align-left nivel-hierarquico nivel-global" id="timeline-wrapper-global">
-                    <div class="main-card-wrapper" data-cidx="main">
-                        <div class="annotation-number-area">
-                            <div class="timeline-icon-box" title="Diretrizes Globais de Admissibilidade">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                            </div>
+            htmlDiretrizesGlobais = `
+            <div class="timeline-item-master align-left nivel-hierarquico nivel-global" id="timeline-wrapper-global">
+                <div class="main-card-wrapper" data-cidx="main">
+                    <div class="annotation-number-area">
+                        <div class="timeline-icon-box" title="Diretrizes Globais de Admissibilidade">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
                         </div>
-                        <div class="annotation-card">
-                                <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
-                                    <div class="hierarquia-titulo">Diretrizes Globais de Admissibilidade</div>
-                                    <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
-                                        <button title="Adicionar Diretriz Global" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:'global'}; acionarNovoNoIdeia()">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                        </button>
-                                    </div>
+                    </div>
+                    <div class="annotation-card">
+                            <div class="card-header" style="justify-content: space-between; margin-bottom: 0;">
+                                <div class="hierarquia-titulo">Diretrizes Globais de Admissibilidade</div>
+                                <div class="card-actions-bar" style="margin-top: 0; padding-top: 0; border-top: none;">
+                                    <button title="Adicionar Diretriz Global" onclick="_menuAnotacaoCtx={topicoId:'${activeTabId}', index:'global'}; acionarNovoNoIdeia()">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    </button>
                                 </div>
                             </div>
-                    </div>
-                    <div class="sub-annotations-wrapper" style="position: relative; min-height: auto;">
-                        ${globaisHtml}
-                    </div>
-                </div>`;
-            }
-
-            conteudoCentralHtml = sumarioHtml + `
-                <div class="timeline-container" id="timeline-container">
-                    <svg id="connections-canvas"></svg>
-                    ${htmlDiretrizesGlobais}
-                    ${cardsHTML}
-                </div>`;
+                        </div>
+                </div>
+                <div class="sub-annotations-wrapper" style="position: relative; min-height: auto;">
+                    ${globaisHtml}
+                </div>
+            </div>`;
         }
+
+        conteudoCentralHtml = sumarioHtml + `
+            <div class="timeline-container" id="timeline-container">
+                <svg id="connections-canvas"></svg>
+                ${htmlDiretrizesGlobais}
+                ${cardsHTML}
+            </div>`;
 
         const novoHtml = preambleHtml + conteudoCentralHtml;
             
-        // Desconecta o observer antes da árvore antiga ser destruída para evitar memory leaks!
-        resizeObserver.disconnect();
+        if (typeof resizeObserver !== 'undefined') resizeObserver.disconnect();
 
-        // KEYED MORPHING
         if (typeof morphdom !== 'undefined') {
             morphdom(contentEl, `<div id="topics-tab-content" class="topics-content-area" style="${contentEl.style.cssText}">${novoHtml}</div>`, {
                 childrenOnly: true,
@@ -1334,22 +1300,19 @@ window.TopicsManager = (function () {
 
             requestAnimationFrame(() => {
                 measurements.forEach(m => {
-                    // Observa APENAS as caixas de texto que podem expandir
-                    resizeObserver.observe(m.el);
+                    if (typeof resizeObserver !== 'undefined') resizeObserver.observe(m.el);
                     
                     if (m.isOverflowing) {
-                        // Exibe o botão e aplica a classe do fade-out
                         if (m.btn) m.btn.style.display = 'inline-flex';
                         m.el.classList.add('is-truncated');
                     } else {
-                        // Garante a limpeza do estado
                         if (m.btn) m.btn.style.display = 'none';
                         m.el.classList.remove('is-truncated');
                     }
                 });
                 
                 const historyContainer = document.getElementById('history-container');
-                if(historyContainer) resizeObserver.observe(historyContainer);
+                if(historyContainer && typeof resizeObserver !== 'undefined') resizeObserver.observe(historyContainer);
                 
                 document.querySelectorAll('.image-resize-wrapper').forEach(wrapper => {
                     wrapper.addEventListener('mouseup', () => desenharConexoes());
