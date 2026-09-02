@@ -100,12 +100,12 @@ body.modo-extrator-ativo #crop-overlay { display: block; cursor: crosshair; back
    ESTILOS DO ALFINETE VISUAL E ESTADO DO BOTÃO
    ================================================ */
 
-/* Estado concluído do botão Extrator (Amarelo) - Alta especificidade sem !important */
+/* Estado concluído do botão Extrator (Fúcsia ED) - Alta especificidade sem !important */
 button#btn-ferramenta-extrator.extrator-completo:not(:disabled) {
-    background-color: #fbc02d;
-    border-color: #f57f17;
+    background-color: #D500B5;
+    border-color: #A3008A;
     color: white;
-    box-shadow: 0 4px 10px rgba(251, 192, 45, 0.4);
+    box-shadow: 0 4px 10px rgba(213, 0, 181, 0.4);
 }
 
 /* Garante que o ícone interno respeite a inversão de cores (cobre fill e stroke) */
@@ -643,7 +643,7 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 .audio-history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: white; border: 1px solid #eee; border-radius: 6px; margin-bottom: 6px; cursor: pointer; transition: background 0.2s; }
 .audio-history-item:hover { background: #fdfaf4; border-color: #f2e3c6; }
 .audio-history-item .hist-title { font-size: 0.8rem; font-weight: 600; color: var(--text-dark); }
-.audio-history-item .hist-time { font-size: 0.75rem; color: #d84315; background: #ffe082; padding: 2px 6px; border-radius: 12px; font-weight: bold; }
+.audio-history-item .hist-time { font-size: 0.75rem; color: #880e4f; background: #fce4ec; border: 1px solid #f48fb1; padding: 1px 6px; border-radius: 12px; font-weight: bold; }
 
 /* ================================================
 MINI PLAYER DE ÁUDIO — MODAL FOCADO (ED)
@@ -820,14 +820,14 @@ MINI PLAYER DE ÁUDIO — MODAL FOCADO (ED)
 .export-option-title { font-size: 0.9rem; font-weight: 700; color: var(--trt-blue); }
 .export-option-subtitle { font-size: 0.75rem; color: #666; margin-top: 2px; }
 
-/* Destaque visual da Matriz Probatória (Fundo Amarelo ED) */
+/* Destaque visual da Matriz Probatória (Fundo Fúcsia ED) */
 .export-option-card.matriz-destaque-ro {
-    background-color: #fffde7;
-    border: 2px solid #fbc02d;
+    background-color: #fce4ec;
+    border: 2px solid #D500B5;
     box-shadow: var(--shadow-sm);
 }
 .export-option-card.matriz-destaque-ro .export-option-title {
-    color: #f57f17;
+    color: #A3008A;
 }
 
 /* Painel de Controle de Alfinetes (Início/Fim) no Hub de Exportação */

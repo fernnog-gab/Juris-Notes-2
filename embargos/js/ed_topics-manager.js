@@ -1582,8 +1582,8 @@ window.TopicsManager = (function () {
             
             const cardInterno = notaAlvo.querySelector('.sub-annotation-card');
             cardInterno.style.transition = 'box-shadow 0.2s, border-color 0.2s';
-            cardInterno.style.borderColor = '#fbbf24';
-            cardInterno.style.boxShadow = '0 0 0 4px rgba(251, 191, 36, 0.3), 4px 4px 0px rgba(0, 0, 0, 0.15)';
+            cardInterno.style.borderColor = '#D500B5';
+            cardInterno.style.boxShadow = '0 0 0 4px rgba(213, 0, 181, 0.3), 4px 4px 0px rgba(0, 0, 0, 0.15)';
             
             setTimeout(() => {
                 cardInterno.style.borderColor = '';
