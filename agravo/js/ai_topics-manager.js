@@ -1557,8 +1557,8 @@ window.TopicsManager = (function () {
             
             const cardInterno = notaAlvo.querySelector('.sub-annotation-card');
             cardInterno.style.transition = 'box-shadow 0.2s, border-color 0.2s';
-            cardInterno.style.borderColor = '#ffb300';
-            cardInterno.style.boxShadow = '0 0 0 4px rgba(255, 179, 0, 0.3), 4px 4px 0px rgba(0, 0, 0, 0.15)';
+            cardInterno.style.borderColor = '#A3E635'; /* Verde Limão AI */
+            cardInterno.style.boxShadow = '0 0 0 4px rgba(163, 230, 53, 0.3), 4px 4px 0px rgba(0, 0, 0, 0.15)';
             
             setTimeout(() => {
                 cardInterno.style.borderColor = ''; 

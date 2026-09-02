@@ -247,7 +247,7 @@ button#btn-ferramenta-extrator.extrator-completo:not(:disabled) svg {
 .audio-history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: white; border: 1px solid #eee; border-radius: 6px; margin-bottom: 6px; cursor: pointer; transition: background 0.2s; }
 .audio-history-item:hover { background: #fdfaf4; border-color: #f2e3c6; }
 .audio-history-item .hist-title { font-size: 0.8rem; font-weight: 600; color: var(--text-dark); }
-.audio-history-item .hist-time { font-size: 0.75rem; color: #d84315; background: #ffe082; padding: 2px 6px; border-radius: 12px; font-weight: bold; }
+.audio-history-item .hist-time { font-size: 0.75rem; color: #3f6212; background: #ecfccb; padding: 2px 6px; border-radius: 12px; font-weight: bold; } /* Paleta Verde Limão AI */
 
 /* ================================================
    5. BOTÕES FLUTUANTES, TOOLTIPS E HIGHLIGHTS (PDF)
