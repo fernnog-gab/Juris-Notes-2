@@ -111,7 +111,9 @@ function definirIntencaoSubAnotacao(intencaoStr) {
         'veredito': 'Veredito / Conclusão',
         'fundamentacao': 'Fundamentação Legal',
         'refutacao': 'Confirmação de Higidez',
-        'preliminar': 'Filtro / Prejudicial'
+        'preliminar': 'Filtro / Prejudicial',
+        'jurisprudencia': 'Jurisprudência Exata',
+        'degravacao': 'Degravação Curada'
     };
     exibirToast(`Classificado como: ${rotulos[intencaoStr]}`, 'sucesso');
     document.getElementById('sub-annotation-context-menu').style.display = 'none';
@@ -1045,7 +1047,9 @@ function exibirTooltipRapido(intencao, event) {
         'veredito': { titulo: 'Veredito / Conclusão', texto: 'Força a IA a concluir o tópico recursal com esta decisão.' },
         'fundamentacao': { titulo: 'Base Legal', texto: 'A IA priorizará esta lei/súmula acima de qualquer outra.' },
         'refutacao': { titulo: 'Confirmação de Higidez', texto: 'A IA usará este argumento para rejeitar o embargo e confirmar que a decisão não tem vícios.' },
-        'preliminar': { titulo: 'Filtro / Prejudicial', texto: 'A IA redigirá este tópico antes de entrar no mérito.' }
+        'preliminar': { titulo: 'Filtro / Prejudicial', texto: 'A IA redigirá este tópico antes de entrar no mérito.' },
+        'jurisprudencia': { titulo: 'Jurisprudência', texto: 'A IA colará a ementa exata e a conectará ao argumento principal do caso.' },
+        'degravacao': { titulo: 'Degravação (Recorte)', texto: 'A IA destacará esta fala exata como a prova oral cabal da tese.' }
     };
 
     const dados = RESUMOS_IA[intencao];
