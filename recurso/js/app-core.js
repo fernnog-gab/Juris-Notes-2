@@ -1640,7 +1640,7 @@ function solicitarExclusaoAba(btnEl, id) {
     }
 }
 
-window.handleMetaClick = function(event, topicoId, index, isCorrelated = false, cIdx = null) {
+window.handleMetaClick = async function(event, topicoId, index, isCorrelated = false, cIdx = null) {
     const topico = topicos.find(t => t.id === topicoId);
     if (!topico) return;
 
